@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=70", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "role-aware-rag-platform"
+version = "0.1.0"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+  "fastapi==0.111.0",
+  "uvicorn==0.30.1",
+  "sqlalchemy==2.0.31",
+  "psycopg2-binary==2.9.9",
+  "pydantic-settings==2.3.4",
+]
