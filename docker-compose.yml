@@ -5,6 +5,5 @@ services:
     volumes:
       - ./:/workspace
     command: >
-      sh -lc "python -m pip install --upgrade pip &&
-              pip install -r requirements.txt &&
+      sh -lc "pip install --disable-pip-version-check -r requirements.lock &&
               python -c 'import fastapi,uvicorn,sqlalchemy,psycopg2,pydantic_settings; print(\"deps OK\")'"
