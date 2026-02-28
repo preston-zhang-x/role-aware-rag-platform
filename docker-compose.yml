@@ -1,10 +1,28 @@
 services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   pycheck:
     image: python:3.11-slim
     working_dir: /workspace
     volumes:
       - ./:/workspace
     command: >
-      sh -lc "python -m pip install --upgrade pip &&
-              pip install -r requirements.txt &&
+      sh -lc "pip install --disable-pip-version-check -r requirements.lock &&
               python -c 'import fastapi,uvicorn,sqlalchemy,psycopg2,pydantic_settings; print(\"deps OK\")'"
+
+volumes:
+  postgres_data:
