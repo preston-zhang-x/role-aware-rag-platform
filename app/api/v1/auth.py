@@ -4,16 +4,23 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.security import create_access_token, verify_password
-from app.db.models.user import User
+from app.core.security import create_access_token, get_current_user, verify_password
+from app.db.models.user import User, UserRole
 from app.db.session import get_db
-
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
-class Token(BaseModel): # Json response model for the token
+
+class Token(BaseModel):  # Json response model for the token
     access_token: str
     token_type: str
+    role: UserRole
+
+
+class UserMe(BaseModel):
+    username: str
+    role: UserRole
+
 
 # Endpoint for user login and token generation
 @router.post("/login", response_model=Token)
@@ -30,6 +37,11 @@ def login(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
-            )
-    token = create_access_token(data={"sub": user.username})
-    return Token(access_token=token, token_type="bearer")
+        )
+    token = create_access_token(subject=user.username)
+    return Token(access_token=token, token_type="bearer", role=user.role)
+
+
+@router.get("/me", response_model=UserMe)
+def read_me(current_user: User = Depends(get_current_user)) -> UserMe:
+    return UserMe(username=current_user.username, role=current_user.role)
