@@ -60,7 +60,7 @@ class MarkdownEscaper:
     """
 
     @staticmethod
-    def escape_cell(text: str) -> str:
+    def escape_cell(text: object | None) -> str:
         """
         テーブルセル内のテキストをエスケープ。
         | → \\|, 改行 → <br>, 全角スペース → 半角

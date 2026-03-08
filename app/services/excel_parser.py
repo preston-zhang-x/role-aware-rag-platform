@@ -223,6 +223,39 @@ class JapaneseExcelParser(BaseParser):
                     chunks.append(chunk)
                     table_buffer = []
                 continue
+            # ── 全同値行の検出 ──
+            # 広播により全列が同一値になった行 → サブ見出しとして出力
+            non_empty_values = [cell for cell in effective_row if cell != ""]
+            unique_values = set(non_empty_values)
+
+            if len(unique_values) == 1 and len(non_empty_values) > 1:
+                # まずバッファフラッシュ
+                if table_buffer:
+                    md, chunk = self._flush_table(
+                        table_buffer,
+                        table_start_row,
+                        row_idx - 1,
+                        file_path,
+                        sheet_name,
+                        effective_cols,
+                    )
+                    markdown_parts.append(md)
+                    chunks.append(chunk)
+                    table_buffer = []
+
+                heading_text = non_empty_values[0]
+                markdown_parts.append(f"\n## {heading_text}\n")
+                chunks.append(
+                    ChunkMeta(
+                        source_file=file_path,
+                        content_type=ContentType.TEXT,
+                        sheet_name=sheet_name,
+                        cell_range=f"row {row_idx + 1}",
+                        is_broadcast_fill=True,
+                    )
+                )
+                continue  # 密度判定をスキップ
+
             # ── 密度計算 ──
             non_empty = sum(1 for cell in effective_row if cell != "")
             density = non_empty / effective_cols
