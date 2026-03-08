@@ -16,13 +16,16 @@ services:
       retries: 20
 
   pycheck:
-    image: python:3.11-slim
+    image: ghcr.io/astral-sh/uv:python3.11-bookworm-slim
     working_dir: /workspace
     volumes:
       - ./:/workspace
+    environment:
+      UV_LINK_MODE: copy
     command: >
-      sh -lc "pip install --disable-pip-version-check -r requirements.lock &&
-              python -c 'import fastapi,uvicorn,sqlalchemy,psycopg2,pydantic_settings; print(\"deps OK\")'"
+      sh -lc "uv venv /tmp/uv-env &&
+              VIRTUAL_ENV=/tmp/uv-env uv sync --locked --active &&
+              VIRTUAL_ENV=/tmp/uv-env uv run --active --no-sync python -c 'import fastapi,uvicorn,sqlalchemy,psycopg2,pydantic_settings,openpyxl; print(\"deps OK\")'"
   pgadmin:
     image: dpage/pgadmin4:latest
     environment:
