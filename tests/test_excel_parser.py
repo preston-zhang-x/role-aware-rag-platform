@@ -170,6 +170,93 @@ def special_chars_excel(tmp_path) -> Path:
     return file_path
 
 
+@pytest.fixture
+def merged_title_excel(tmp_path) -> Path:
+    """2 行結合タイトルが 1 回だけ見出し化される Excel"""
+    file_path = tmp_path / "merged_title.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    assert ws is not None
+    ws.title = "見出し検証"
+
+    ws["A1"] = "設計サマリ"
+    ws.merge_cells("A1:D2")
+    ws["A4"] = "項目"
+    ws["B4"] = "値"
+    ws["A5"] = "状態"
+    ws["B5"] = "レビュー済み"
+
+    wb.save(file_path)
+    wb.close()
+    return file_path
+
+
+@pytest.fixture
+def semantic_text_excel(tmp_path) -> Path:
+    """見出しと本文を区別したい Excel"""
+    file_path = tmp_path / "semantic_text.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    assert ws is not None
+    ws.title = "基本設計"
+
+    ws["A1"] = "1. システム概要"
+    ws.merge_cells("A1:D1")
+    ws["A2"] = "本システムは受発注情報を一元管理する業務システムです。"
+    ws.merge_cells("A2:D2")
+    ws["A4"] = "補足: パイプ | 改行\n全角　スペース を含むテキスト"
+    ws.merge_cells("A4:D4")
+
+    wb.save(file_path)
+    wb.close()
+    return file_path
+
+
+@pytest.fixture
+def dense_kv_excel(tmp_path) -> Path:
+    """空白ギャップ付きの属性行を持つ Excel"""
+    file_path = tmp_path / "dense_kv.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    assert ws is not None
+    ws.title = "メタ情報"
+
+    ws["A1"] = "プロジェクト名"
+    ws["B1"] = "RAG Platform"
+    ws["E1"] = "管理番号"
+    ws["F1"] = "PRJ-001"
+    ws["A2"] = "作成者"
+    ws["B2"] = "田中太郎"
+    ws["E2"] = "版数"
+    ws["F2"] = "1.0"
+
+    wb.save(file_path)
+    wb.close()
+    return file_path
+
+
+@pytest.fixture
+def wide_sheet_table_excel(tmp_path) -> Path:
+    """シート幅よりテーブル幅を優先してほしい Excel"""
+    file_path = tmp_path / "wide_sheet_table.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    assert ws is not None
+    ws.title = "一覧"
+
+    ws["A1"] = "ID"
+    ws["B1"] = "名前"
+    ws["C1"] = "部署"
+    ws["A2"] = "001"
+    ws["B2"] = "田中太郎"
+    ws["C2"] = "開発部"
+    ws["H5"] = "このシートは 8 列幅"
+
+    wb.save(file_path)
+    wb.close()
+    return file_path
+
+
 # ═══════════════════════════════════════
 # can_handle テスト
 # ═══════════════════════════════════════
@@ -234,6 +321,11 @@ class TestMergedCells:
         has_warning = any("A1:C1" in w for w in result.warnings)
         assert has_warning
 
+    def test_duplicate_merged_heading_deduplicated(self, parser, merged_title_excel):
+        """複数行に広播された同一タイトルは 1 回だけ出力されること"""
+        result = parser.parse(str(merged_title_excel))
+        assert result.text.count("## 設計サマリ") == 1
+
 
 # ═══════════════════════════════════════
 # 戦略3: 启发式扫描テスト
@@ -266,6 +358,27 @@ class TestHeuristicScan:
         types = {chunk.content_type for chunk in result.chunks}
         # KV とテーブル両方が検出されるはず
         assert ContentType.KEY_VALUE in types or ContentType.TABLE in types
+
+    def test_dense_pairs_rendered_as_bullets(self, parser, dense_kv_excel):
+        """空白ギャップ付きの属性行は箇条書き KV に変換されること"""
+        result = parser.parse(str(dense_kv_excel))
+        assert "- **プロジェクト名:** RAG Platform" in result.text
+        assert "- **管理番号:** PRJ-001" in result.text
+        assert "| プロジェクト名 |" not in result.text
+
+    def test_long_merged_text_kept_as_paragraph(self, parser, semantic_text_excel):
+        """長文の単一セル行は見出しではなく段落として出力されること"""
+        result = parser.parse(str(semantic_text_excel))
+        assert "## 1. システム概要" in result.text
+        assert "本システムは受発注情報を一元管理する業務システムです。" in result.text
+        assert "## 本システムは受発注情報を一元管理する業務システムです。" not in result.text
+        assert "## 補足:" not in result.text
+
+    def test_table_trimmed_to_used_columns(self, parser, wide_sheet_table_excel):
+        """テーブルはシート全体ではなくブロックの実列数で出力されること"""
+        result = parser.parse(str(wide_sheet_table_excel))
+        assert "| ID | 名前 | 部署 |" in result.text
+        assert "| ID | 名前 | 部署 |  |" not in result.text
 
 
 # ═══════════════════════════════════════
