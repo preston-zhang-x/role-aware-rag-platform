@@ -9,7 +9,7 @@
 from pathlib import Path
 
 import openpyxl
-from openpyxl.cell.cell import Cell
+from openpyxl.cell.cell import Cell, MergedCell
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
@@ -22,11 +22,15 @@ from app.services.parse_result import (
     ParserWarning,
 )
 
+CellLike = Cell | MergedCell
+
 
 class JapaneseExcelParser(BaseParser):
     """
     日本式 Excel 仕様書に特化したパーサー。
     """
+
+    MAX_HEADING_LENGTH = 48
 
     # ─── コンストラクタ ───
     def __init__(self, density_threshold: float = 0.5):
@@ -78,19 +82,19 @@ class JapaneseExcelParser(BaseParser):
                     continue
 
                 # ── 戦略1: Sheet名を Markdown 一級見出しとして注入 ──
-                markdown_sections.append(f"# {sheet_name}\n")
+                markdown_sections.append(f"# {sheet_name}")
 
                 # ── 戦略2: 結合セルの解構と広播 ──
-                grid = self._build_grid_with_merged_cells(
+                grid, broadcast_cells = self._build_grid_with_merged_cells(
                     ws_cached, ws_formula, all_warnings
                 )
                 if not grid:
-                    markdown_sections.append("_(空のシート)_\n")
+                    markdown_sections.append("_(空のシート)_")
                     continue
 
                 # ── 戦略3: 启发式扫描でKV/テーブルを判別 ──
                 section_md, section_chunks = self._heuristic_scan(
-                    grid, file_path, sheet_name
+                    grid, file_path, sheet_name, broadcast_cells
                 )
                 markdown_sections.append(section_md)
                 all_chunks.extend(section_chunks)
@@ -104,7 +108,10 @@ class JapaneseExcelParser(BaseParser):
             wb_cached.close()
             wb_formula.close()
         return ParseResult(
-            text="\n".join(markdown_sections),
+            text="\n\n".join(
+                section.strip() for section in markdown_sections if section.strip()
+            )
+            + "\n",
             chunks=all_chunks,
             warnings=all_warnings,
         )
@@ -117,16 +124,17 @@ class JapaneseExcelParser(BaseParser):
         ws_cached: Worksheet,
         ws_formula: Worksheet,
         warnings: list[str],
-    ) -> list[list[str]]:
+    ) -> tuple[list[list[str]], set[tuple[int, int]]]:
         """
         ワークシートの全セルを2Dリスト(grid)に読み込む。
         結合セルの値を全子セルに広播填充する。
         """
         if ws_cached.max_row is None or ws_cached.max_column is None:
-            return []
+            return [], set()
 
         max_row = ws_cached.max_row
         max_col = ws_cached.max_column
+        broadcast_cells: set[tuple[int, int]] = set()
 
         # ── Step A: 空の2Dグリッドを初期化 ──
         grid: list[list[str]] = [["" for _ in range(max_col)] for _ in range(max_row)]
@@ -148,16 +156,21 @@ class JapaneseExcelParser(BaseParser):
             for row_idx in range(merged_range.min_row, merged_range.max_row + 1):
                 for col_idx in range(merged_range.min_col, merged_range.max_col + 1):
                     grid[row_idx - 1][col_idx - 1] = top_left_value
+                    if (
+                        row_idx != merged_range.min_row
+                        or col_idx != merged_range.min_col
+                    ):
+                        broadcast_cells.add((row_idx - 1, col_idx - 1))
 
             warnings.append(
                 f"{ParserWarning.MERGED_CELL_BROADCAST.value}: {merged_range}"
             )
-        return grid
+        return grid, broadcast_cells
 
     def _read_cell_value(
         self,
-        cached_cell: Cell,
-        formula_cell: Cell,
+        cached_cell: CellLike,
+        formula_cell: CellLike,
         warnings: list[str],
     ) -> str:
         """
@@ -187,6 +200,7 @@ class JapaneseExcelParser(BaseParser):
         grid: list[list[str]],
         file_path: str,
         sheet_name: str,
+        broadcast_cells: set[tuple[int, int]],
     ) -> tuple[str, list[ChunkMeta]]:
         """
         行ごとにデータ密度を計算し、KV(疎)/ Table(密)を動的に切り替え。
@@ -202,81 +216,75 @@ class JapaneseExcelParser(BaseParser):
         # テーブル行のバッファ（連続モードで蓄積）
         table_buffer: list[list[str]] = []
         table_start_row: int = 0
+        last_text_block: str | None = None
+        previous_kv_keys: set[str] = set()
+
+        def flush_table(end_row: int) -> None:
+            nonlocal table_buffer
+            if not table_buffer:
+                return
+            md, chunk = self._flush_table(
+                table_buffer,
+                table_start_row,
+                end_row,
+                file_path,
+                sheet_name,
+                effective_cols,
+            )
+            if md:
+                markdown_parts.append(md)
+                chunks.append(chunk)
+            table_buffer = []
 
         for row_idx, row in enumerate(grid):
             # 有効列のみ切り出し
             effective_row = row[:effective_cols]
+            semantic_row = self._collapse_duplicate_runs(
+                effective_row, row_idx, broadcast_cells
+            )
+            if semantic_row and len(set(semantic_row)) == 1:
+                semantic_row = [semantic_row[0]]
 
             # 空行判定
-            if all(cell == "" for cell in effective_row):
-                # バッファにテーブルが溜まっていたらフラッシュ
-                if table_buffer:
-                    md, chunk = self._flush_table(
-                        table_buffer,
-                        table_start_row,
-                        row_idx - 1,
-                        file_path,
-                        sheet_name,
-                        effective_cols,
-                    )
-                    markdown_parts.append(md)
-                    chunks.append(chunk)
-                    table_buffer = []
+            if not semantic_row:
+                flush_table(row_idx - 1)
+                previous_kv_keys = set()
                 continue
-            # ── 全同値行の検出 ──
-            # 広播により全列が同一値になった行 → サブ見出しとして出力
-            non_empty_values = [cell for cell in effective_row if cell != ""]
-            unique_values = set(non_empty_values)
 
-            if len(unique_values) == 1 and len(non_empty_values) > 1:
-                # まずバッファフラッシュ
-                if table_buffer:
-                    md, chunk = self._flush_table(
-                        table_buffer,
-                        table_start_row,
-                        row_idx - 1,
-                        file_path,
-                        sheet_name,
-                        effective_cols,
-                    )
-                    markdown_parts.append(md)
-                    chunks.append(chunk)
-                    table_buffer = []
+            if len(semantic_row) == 1:
+                flush_table(row_idx - 1)
+                text = MarkdownEscaper.escape_cell(semantic_row[0])
+                if self._should_skip_text_block(
+                    text, last_text_block, previous_kv_keys
+                ):
+                    previous_kv_keys = set()
+                    continue
 
-                heading_text = non_empty_values[0]
-                markdown_parts.append(f"\n## {heading_text}\n")
+                markdown_parts.append(self._render_text_block(text))
                 chunks.append(
                     ChunkMeta(
                         source_file=file_path,
                         content_type=ContentType.TEXT,
                         sheet_name=sheet_name,
                         cell_range=f"row {row_idx + 1}",
-                        is_broadcast_fill=True,
+                        is_broadcast_fill=sum(cell != "" for cell in effective_row) > 1,
                     )
                 )
-                continue  # 密度判定をスキップ
+                last_text_block = text
+                previous_kv_keys = set()
+                continue
 
             # ── 密度計算 ──
             non_empty = sum(1 for cell in effective_row if cell != "")
-            density = non_empty / effective_cols
+            row_span = self._calc_row_span(effective_row)
+            density = non_empty / row_span if row_span else 0
 
-            if density < self.density_threshold:
+            if self._looks_like_kv_row(effective_row, semantic_row, density):
                 # ── 離散モード → KV ──
                 # まずバッファフラッシュ
-                if table_buffer:
-                    md, chunk = self._flush_table(
-                        table_buffer,
-                        table_start_row,
-                        row_idx - 1,
-                        file_path,
-                        sheet_name,
-                        effective_cols,
-                    )
-                    markdown_parts.append(md)
-                    chunks.append(chunk)
-                    table_buffer = []
+                flush_table(row_idx - 1)
 
-                kv_md = self._render_kv_row(effective_row)
+                kv_md, kv_keys = self._render_kv_row(semantic_row)
                 if kv_md:
                     markdown_parts.append(kv_md)
                     chunks.append(
@@ -287,30 +295,145 @@ class JapaneseExcelParser(BaseParser):
                             cell_range=f"row {row_idx + 1}",
                         )
                     )
+                    previous_kv_keys = kv_keys
+                    last_text_block = None
             else:
                 # ── 連続モード → テーブルバッファに追加 ──
                 if not table_buffer:
                     table_start_row = row_idx
                 table_buffer.append(effective_row)
+                last_text_block = None
+                previous_kv_keys = set()
 
         # ループ終了後、残りバッファをフラッシュ
-        if table_buffer:
-            md, chunk = self._flush_table(
-                table_buffer,
-                table_start_row,
-                len(grid) - 1,
-                file_path,
-                sheet_name,
-                effective_cols,
-            )
-            markdown_parts.append(md)
-            chunks.append(chunk)
+        flush_table(len(grid) - 1)
 
-        return "\n".join(markdown_parts) + "\n", chunks
+        return "\n\n".join(markdown_parts), chunks
 
     # ═══════════════════════════════════════════════
     # ヘルパーメソッド群
     # ═══════════════════════════════════════════════
+
+    def _collapse_duplicate_runs(
+        self,
+        row: list[str],
+        row_idx: int,
+        broadcast_cells: set[tuple[int, int]],
+    ) -> list[str]:
+        """
+        結合セルのブロードキャストで横方向に重複した値を 1 回に畳み込む。
+        空セルは区切りとして扱い、離れた位置の同値は別要素として残す。
+        """
+        collapsed: list[str] = []
+        previous_value: str | None = None
+        previous_was_broadcast = False
+
+        for col_idx, cell in enumerate(row):
+            is_broadcast = (row_idx, col_idx) in broadcast_cells
+            if cell == "":
+                previous_value = None
+                previous_was_broadcast = False
+                continue
+            if cell != previous_value or not (is_broadcast or previous_was_broadcast):
+                collapsed.append(cell)
+            previous_was_broadcast = is_broadcast
+            previous_value = cell
+
+        return collapsed
+
+    def _has_internal_blank_gap(self, row: list[str]) -> bool:
+        """
+        非空セルの途中に空白ギャップがある行を検出する。
+        KV レイアウトや結合セルペアの手掛かりに使う。
+        """
+        try:
+            first = next(index for index, cell in enumerate(row) if cell != "")
+            last = max(index for index, cell in enumerate(row) if cell != "")
+        except (StopIteration, ValueError):
+            return False
+
+        return any(cell == "" for cell in row[first : last + 1])
+
+    def _calc_row_span(self, row: list[str]) -> int:
+        """
+        行内で実際に使われている列幅を返す。
+        シート全体の列幅ではなく、その行自身の密度計算に使う。
+        """
+        try:
+            first = next(index for index, cell in enumerate(row) if cell != "")
+            last = max(index for index, cell in enumerate(row) if cell != "")
+        except (StopIteration, ValueError):
+            return 0
+
+        return last - first + 1
+
+    def _looks_like_heading(self, text: str) -> bool:
+        """
+        LLM 向けに意味のある短いラベルだけを見出しとして扱う。
+        長文や注記は段落へ降格する。
+        """
+        normalized = text.strip()
+        if not normalized:
+            return False
+        if len(normalized) > self.MAX_HEADING_LENGTH:
+            return False
+        if any(token in normalized for token in ("。", "<br>", r"\|", ":", "：")):
+            return False
+        return True
+
+    def _render_text_block(self, text: str) -> str:
+        """1 セル相当の意味ブロックを見出しか段落として整形する。"""
+        if self._looks_like_heading(text):
+            return f"## {text}"
+        return text
+
+    def _should_skip_text_block(
+        self,
+        text: str,
+        last_text_block: str | None,
+        previous_kv_keys: set[str],
+    ) -> bool:
+        """
+        結合セルの多行展開などで生じる近接重複を抑制する。
+        """
+        if text == last_text_block:
+            return True
+        if text in previous_kv_keys and len(text) <= 24:
+            return True
+        return False
+
+    def _looks_like_kv_row(
+        self,
+        original_row: list[str],
+        semantic_row: list[str],
+        density: float,
+    ) -> bool:
+        """
+        表ではなく属性列挙として読むべき行を判定する。
+        """
+        if len(semantic_row) <= 1:
+            return False
+
+        if density < self.density_threshold:
+            return True
+
+        non_empty_original = sum(1 for cell in original_row if cell != "")
+        was_compacted = len(semantic_row) < non_empty_original
+        has_internal_blank_gap = self._has_internal_blank_gap(original_row)
+        try:
+            first_non_empty = next(
+                index for index, cell in enumerate(original_row) if cell != ""
+            )
+        except (StopIteration, ValueError):
+            first_non_empty = -1
+
+        if len(semantic_row) == 2 and first_non_empty > 0:
+            return True
+
+        if len(semantic_row) <= 6 and (was_compacted or has_internal_blank_gap):
+            return True
+
+        return False
 
     def _calc_effective_cols(self, grid: list[list[str]]) -> int:
         """
@@ -340,11 +463,17 @@ class JapaneseExcelParser(BaseParser):
         """
         if not buffer:
             return "", ChunkMeta(source_file=file_path, content_type=ContentType.TABLE)
-        headers = buffer[0]  # 先頭行 = ヘッダー
-        data_rows = buffer[1:] if len(buffer) > 1 else []
+
+        table_cols = self._calc_effective_cols(buffer)
+        if table_cols == 0:
+            return "", ChunkMeta(source_file=file_path, content_type=ContentType.TABLE)
+
+        trimmed_buffer = [row[:table_cols] for row in buffer]
+        headers = trimmed_buffer[0]  # 先頭行 = ヘッダー
+        data_rows = trimmed_buffer[1:] if len(trimmed_buffer) > 1 else []
         md = MarkdownEscaper.make_table(headers, data_rows)
         col_start = get_column_letter(1)
-        col_end = get_column_letter(effective_cols)
+        col_end = get_column_letter(table_cols)
         cell_range = f"{col_start}{start_row + 1}:{col_end}{end_row + 1}"
         chunk = ChunkMeta(
             source_file=file_path,
@@ -352,29 +481,30 @@ class JapaneseExcelParser(BaseParser):
             sheet_name=sheet_name,
             cell_range=cell_range,
         )
-        return md + "\n", chunk
+        return md, chunk
 
-    def _render_kv_row(self, row: list[str]) -> str:
+    def _render_kv_row(self, row: list[str]) -> tuple[str, set[str]]:
         """
-        疎な行を **Key:** Value 形式に変換。
+        疎な行を LLM が読みやすい箇条書き KV 形式に変換。
         """
-        non_empty = [cell for cell in row if cell != ""]
-        if not non_empty:
-            return ""
+        if not row:
+            return "", set()
         parts: list[str] = []
+        keys: set[str] = set()
         # ペアで処理
         i = 0
-        while i < len(non_empty):
-            if i + 1 < len(non_empty):
-                key = MarkdownEscaper.escape_cell(non_empty[i])
-                value = MarkdownEscaper.escape_cell(non_empty[i + 1])
-                parts.append(f"**{key}:** {value}")
+        while i < len(row):
+            if i + 1 < len(row):
+                key = MarkdownEscaper.escape_cell(row[i])
+                value = MarkdownEscaper.escape_cell(row[i + 1])
+                parts.append(f"- **{key}:** {value}")
+                keys.add(key)
                 i += 2
             else:
                 # 余り1個 → 単独テキスト
-                parts.append(MarkdownEscaper.escape_cell(non_empty[i]))
+                parts.append(f"- {MarkdownEscaper.escape_cell(row[i])}")
                 i += 1
-        return "  \n".join(parts)  # Markdown のソフト改行（末尾2スペース）
+        return "\n".join(parts), keys
 
     def _extract_shapes_and_comments(self, ws: Worksheet) -> str:
         """
@@ -386,9 +516,12 @@ class JapaneseExcelParser(BaseParser):
         for row in ws.iter_rows():
             for cell in row:
                 if cell.comment:
-                    coord = f"{get_column_letter(cell.column)}{cell.row}"
+                    column_index = cell.column
+                    if column_index is None:
+                        continue
+                    coord = f"{get_column_letter(column_index)}{cell.row}"
                     comment_text = MarkdownEscaper.escape_cell(cell.comment.text)
                     comments_md.append(f"- **[{coord}]** {comment_text}")
         if not comments_md:
             return ""
-        return "\n### コメント・注記\n\n" + "\n".join(comments_md) + "\n"
+        return "### コメント・注記\n\n" + "\n".join(comments_md)
