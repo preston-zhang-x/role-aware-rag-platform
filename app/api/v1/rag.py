@@ -18,9 +18,9 @@ class AskRequest(BaseModel):
         examples=["売上レポートの作成方法は？"],
     )
     role: str = Field(
-        default="viewer",
+        default="staff",
         description="ユーザーのロール（権限フィルタリング用）",
-        examples=["admin", "editor", "viewer"],
+        examples=["admin", "manager", "staff"],
     )
 
 
