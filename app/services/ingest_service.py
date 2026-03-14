@@ -124,12 +124,15 @@ class IngestService:
         # 解析結果からテキストを取り出し、ノードを構築する。
         nodes = self._build_nodes(file_path, parse_result.text, allowed_roles)
         if not nodes:
+            warnings = self._summarize_warnings(
+                parse_result.warnings
+                + ["ファイルから有効なテキストが抽出できませんでした、スキップ"]
+            )
             return IngestResult(
                 total_chunks=0,
                 collection_name=self.collection_name,
                 source_file=file_path,
-                warnings=parse_result.warnings
-                + ["ファイルから有効なテキストが抽出できませんでした、スキップ"],
+                warnings=warnings,
             )
         pipeline = self._create_pipeline()
         embedded_nodes = list(pipeline.run(nodes=nodes))
@@ -140,7 +143,7 @@ class IngestService:
             total_chunks=len(embedded_nodes),
             collection_name=self.collection_name,
             source_file=file_path,
-            warnings=parse_result.warnings,
+            warnings=self._summarize_warnings(parse_result.warnings),
         )
 
     def _build_source_key(self, file_path: str) -> str:
@@ -186,7 +189,6 @@ class IngestService:
     ) -> dict[str, str | int | list[str]]:
         # 検索と権限制御のmetadataを構築する。
         metadata: dict[str, str | int | list[str]] = {
-            "text": chunk_text,  # テキストもメタデータに入れておく??
             "source_file": file_path,
             "source_key": source_key,
             "allowed_roles": allowed_roles,
@@ -198,6 +200,19 @@ class IngestService:
                 formula_desc  # metadataにExcel関数の説明を追加する
             )
         return metadata
+
+    def _summarize_warnings(self, warnings: list[str]) -> list[str]:
+        # ingest の戻り値では同種 warning をまとめて扱いやすくする。
+        grouped_counts: dict[str, int] = {}
+        for warning in warnings:
+            summary = self._warning_summary_key(warning)
+            grouped_counts[summary] = grouped_counts.get(summary, 0) + 1
+        return [f"{summary} ({count}件)" for summary, count in grouped_counts.items()]
+
+    def _warning_summary_key(self, warning: str) -> str:
+        if ": " in warning:
+            return warning.split(": ", 1)[0]
+        return warning
 
     def _build_nodes(
         self,
