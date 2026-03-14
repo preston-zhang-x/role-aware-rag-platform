@@ -23,6 +23,7 @@ class OpenAISettings(BaseSettings):
     openai_base_url: str
     embedding_model: str
     embedding_dimensions: int
+    chat_model: str = "gpt-4o-mini"
 
 
 security_settings = SecuritySettings()  # type: ignore
