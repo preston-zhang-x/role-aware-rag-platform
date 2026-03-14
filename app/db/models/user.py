@@ -9,8 +9,8 @@ from app.db.base import Base
 
 class UserRole(str, enum.Enum):
     ADMIN = "admin"
-    EDITOR = "editor"
-    VIEWER = "viewer"
+    MANAGER = "manager"
+    STAFF = "staff"
 
 
 class User(Base):
@@ -23,11 +23,11 @@ class User(Base):
         SqlEnum(
             UserRole,
             name="user_role",
-            native_enum=False,
+            native_enum=False,  # PostgreのENUMを使用しない、Varcharとして保存する
             values_callable=lambda enum_cls: [
                 item.value for item in enum_cls
             ],  # 文字列値をDBに保存するための設定
         ),
         nullable=False,
-        default=UserRole.VIEWER,
+        default=UserRole.STAFF,
     )
