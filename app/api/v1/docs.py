@@ -49,7 +49,7 @@ class DocOut(DocBase):
     "/",
     response_model=DocOut,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_roles(UserRole.ADMIN, UserRole.EDITOR))],
+    dependencies=[Depends(require_roles(UserRole.ADMIN, UserRole.MANAGER))],
 )
 def create_doc(payload: DocCreate, db: Session = Depends(get_db)) -> Document:
     doc = Document(title=payload.title, content=payload.content)
@@ -91,7 +91,7 @@ def get_doc(doc_id: int, db: Session = Depends(get_db)) -> Document:
 @router.put(
     "/{doc_id}",
     response_model=DocOut,
-    dependencies=[Depends(require_roles(UserRole.ADMIN, UserRole.EDITOR))],
+    dependencies=[Depends(require_roles(UserRole.ADMIN, UserRole.MANAGER))],
 )
 def update_doc(
     doc_id: int, payload: DocUpdate, db: Session = Depends(get_db)
