@@ -2,8 +2,8 @@
 文書解析テスト用 CLI スクリプト。
 
 使い方:
-    python scripts/ingest_excel.py path/to/file.xlsx
-    python scripts/ingest_excel.py path/to/file.pdf
+    python script/ingest_excel.py path/to/file.xlsx
+    python script/ingest_excel.py path/to/file.pdf
 
 出力:
     - コンソールに Markdown テキストを表示
@@ -22,8 +22,8 @@ from app.services.document_loader import DocumentLoader
 def main():
     # ── 引数チェック ──
     if len(sys.argv) < 2:
-        print("使い方: python scripts/ingest_excel.py <ファイルパス>")
-        print("例:     python scripts/ingest_excel.py data/fixtures/sample.xlsx")
+        print("使い方: python script/ingest_excel.py <ファイルパス>")
+        print("例:     python script/ingest_excel.py data/fixtures/sample.xlsx")
         sys.exit(1)
 
     file_path = sys.argv[1]
