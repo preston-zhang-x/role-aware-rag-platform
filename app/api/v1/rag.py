@@ -1,8 +1,10 @@
 """RAG 検索問答 API ルーター。"""
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from app.core.deps import get_current_active_user
+from app.db.models.user import User
 from app.services.rag_service import RagService
 
 # ── Router 定義 ─────────────────────────────────────────────
@@ -16,11 +18,6 @@ class AskRequest(BaseModel):
         max_length=2000,
         description="検索対象の質問文",
         examples=["売上レポートの作成方法は？"],
-    )
-    role: str = Field(
-        default="staff",
-        description="ユーザーのロール（権限フィルタリング用）",
-        examples=["admin", "manager", "staff"],
     )
 
 
@@ -38,7 +35,7 @@ class AskResponse(BaseModel):
 
 # ── エンドポイント ──────────────────────────────────────────
 @router.post("/ask", response_model=AskResponse)
-def ask(request: AskRequest):
+def ask(request: AskRequest, current_user: User = Depends(get_current_active_user)):
     """
     RAG 検索問答エンドポイント。
 
@@ -51,7 +48,7 @@ def ask(request: AskRequest):
         service = RagService()
         result = service.ask(
             question=request.question,
-            user_roles=[request.role],
+            user_roles=[current_user.role.value],
         )
 
         # 結果を Response DTO に変換

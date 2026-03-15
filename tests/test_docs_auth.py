@@ -1,3 +1,9 @@
+"""
+tests/test_docs_auth.py
+───────────────────────
+ドキュメント API の認可テスト。
+"""
+
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -35,32 +41,35 @@ def auth_headers(token: str) -> dict[str, str]:
 
 
 def test_docs_requires_auth(client: TestClient):
+    """Token なしの一覧取得は 401 を返す。"""
     response = client.get("/api/v1/docs/")
     assert response.status_code == 401
 
 
-def test_viewer_cannot_create_doc(client: TestClient, test_db_session: Session):
-    create_user(test_db_session, "viewer1", "password123", UserRole.VIEWER)
-    token = login(client, "viewer1", "password123")
+def test_staff_cannot_create_doc(client: TestClient, test_db_session: Session):
+    """Staff はドキュメントを作成できない。"""
+    create_user(test_db_session, "staff1", "password123", UserRole.STAFF)
+    token = login(client, "staff1", "password123")
 
     response = client.post(
         "/api/v1/docs/",
         headers=auth_headers(token),
-        json={"title": "blocked", "content": "viewer should fail"},
+        json={"title": "blocked", "content": "staff should fail"},
     )
 
     assert response.status_code == 403
     assert response.json()["detail"] == "Not enough permissions"
 
 
-def test_editor_can_create_doc(client: TestClient, test_db_session: Session):
-    create_user(test_db_session, "editor1", "password123", UserRole.EDITOR)
-    token = login(client, "editor1", "password123")
+def test_manager_can_create_doc(client: TestClient, test_db_session: Session):
+    """Manager はドキュメントを作成できる。"""
+    create_user(test_db_session, "manager1", "password123", UserRole.MANAGER)
+    token = login(client, "manager1", "password123")
 
     response = client.post(
         "/api/v1/docs/",
         headers=auth_headers(token),
-        json={"title": "allowed", "content": "editor can create"},
+        json={"title": "allowed", "content": "manager can create"},
     )
 
     assert response.status_code == 201
@@ -68,6 +77,7 @@ def test_editor_can_create_doc(client: TestClient, test_db_session: Session):
 
 
 def test_admin_can_delete_doc(client: TestClient, test_db_session: Session):
+    """Admin はドキュメントを削除できる。"""
     create_user(test_db_session, "admin1", "password123", UserRole.ADMIN)
     token = login(client, "admin1", "password123")
 
