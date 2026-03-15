@@ -16,13 +16,39 @@ services:
       retries: 20
 
   pycheck:
-    image: python:3.11-slim
+    image: ghcr.io/astral-sh/uv:python3.11-bookworm-slim
     working_dir: /workspace
     volumes:
       - ./:/workspace
+    environment:
+      UV_LINK_MODE: copy
     command: >
-      sh -lc "pip install --disable-pip-version-check -r requirements.lock &&
-              python -c 'import fastapi,uvicorn,sqlalchemy,psycopg2,pydantic_settings; print(\"deps OK\")'"
+      sh -lc "uv venv /tmp/uv-env &&
+              VIRTUAL_ENV=/tmp/uv-env uv sync --locked --active &&
+              VIRTUAL_ENV=/tmp/uv-env uv run --active --no-sync python -c 'import fastapi,uvicorn,sqlalchemy,psycopg2,pydantic_settings,openpyxl; print(\"deps OK\")'"
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@admin.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      db:
+        condition: service_healthy
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"  # HTTP API
+      - "6334:6334"  # gRPC API
+    volumes:
+      - qdrant_data:/qdrant/storage
 
 volumes:
   postgres_data:
+  pgadmin_data:
+  qdrant_data:

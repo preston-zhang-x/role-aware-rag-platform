@@ -1,0 +1,182 @@
+[
+  {
+    "id": 1,
+    "question": "仕様書のタイトルは何ですか？",
+    "expected": ["Role Aware RAG Platform 現状仕様書"],
+    "role": "admin"
+  },
+  {
+    "id": 2,
+    "question": "作成対象は何ですか？",
+    "expected": ["現状実装のみ"],
+    "role": "admin"
+  },
+  {
+    "id": 3,
+    "question": "FN-007 の機能名は何ですか？",
+    "expected": ["文書削除"],
+    "role": "admin"
+  },
+  {
+    "id": 4,
+    "question": "FN-010 のカテゴリは何ですか？",
+    "expected": ["Parser"],
+    "role": "admin"
+  },
+  {
+    "id": 5,
+    "question": "FN-012 の備考では異常時に何を返すとありますか？",
+    "expected": ["503"],
+    "role": "admin"
+  },
+  {
+    "id": 6,
+    "question": "SCR-003 の画面名は何ですか？",
+    "expected": ["RAG 問合せ画面"],
+    "role": "admin"
+  },
+  {
+    "id": 7,
+    "question": "ITM-SCR003-002 の初期値は何ですか？",
+    "expected": ["viewer"],
+    "role": "admin"
+  },
+  {
+    "id": 8,
+    "question": "IF-007 の HTTP メソッドは何ですか？",
+    "expected": ["DELETE"],
+    "role": "admin"
+  },
+  {
+    "id": 9,
+    "question": "IF-010 の Path は何ですか？",
+    "expected": ["/api/v1/health/ready"],
+    "role": "admin"
+  },
+  {
+    "id": 10,
+    "question": "IF-001 の response に含まれるトークン種別の項目名は何ですか？",
+    "expected": ["token_type"],
+    "role": "admin"
+  },
+  {
+    "id": 11,
+    "question": "IF-004 の query parameter `limit` の既定値は何ですか？",
+    "expected": ["10"],
+    "role": "admin"
+  },
+  {
+    "id": 12,
+    "question": "IF-004 の `limit` の上限は何ですか？",
+    "expected": ["100"],
+    "role": "admin"
+  },
+  {
+    "id": 13,
+    "question": "IF-005 の path parameter 名は何ですか？",
+    "expected": ["doc_id"],
+    "role": "admin"
+  },
+  {
+    "id": 14,
+    "question": "IF-007 の成功時ステータスは何ですか？",
+    "expected": ["204", "No", "Content"],
+    "role": "admin"
+  },
+  {
+    "id": 15,
+    "question": "IF-008 の body の `role` の既定値は何ですか？",
+    "expected": ["viewer"],
+    "role": "admin"
+  },
+  {
+    "id": 16,
+    "question": "IF-010 の異常時ステータスは何ですか？",
+    "expected": ["503", "Service", "Unavailable"],
+    "role": "admin"
+  },
+  {
+    "id": 17,
+    "question": "users テーブルの `role` カラムの既定値は何ですか？",
+    "expected": ["viewer"],
+    "role": "admin"
+  },
+  {
+    "id": 18,
+    "question": "documents.updated_at の自動/更新は何ですか？",
+    "expected": ["server_default", "onupdate"],
+    "role": "admin"
+  },
+  {
+    "id": 19,
+    "question": "ベクトルストアの collection_name は何ですか？",
+    "expected": ["documents"],
+    "role": "admin"
+  },
+  {
+    "id": 20,
+    "question": "chunk_overlap は何ですか？",
+    "expected": ["100"],
+    "role": "admin"
+  },
+  {
+    "id": 21,
+    "question": "chat_model は何ですか？",
+    "expected": ["gpt-4o-mini"],
+    "role": "admin"
+  },
+  {
+    "id": 22,
+    "question": "ロールフィルタ対象の payload metadata 項目名は何ですか？",
+    "expected": ["allowed_roles"],
+    "role": "admin"
+  },
+  {
+    "id": 23,
+    "question": "RL-012 の warning 名は何ですか？",
+    "expected": ["FORMULA_NO_CACHE"],
+    "role": "admin"
+  },
+  {
+    "id": 24,
+    "question": "Query フロー Step 3 の主体は何ですか？",
+    "expected": ["Qdrant"],
+    "role": "admin"
+  },
+  {
+    "id": 25,
+    "question": "OPENAI_BASE_URL の例示値は何ですか？",
+    "expected": ["https://api.openai.com/v1"],
+    "role": "admin"
+  },
+  {
+    "id": 26,
+    "question": "IF-003 の成功時ステータスは何ですか？",
+    "expected": ["201", "Created"],
+    "role": "editor"
+  },
+  {
+    "id": 27,
+    "question": "IF-006 の認可は何ですか？",
+    "expected": ["admin", "editor"],
+    "role": "editor"
+  },
+  {
+    "id": 28,
+    "question": "IF-009 の名称は何ですか？",
+    "expected": ["Live チェック"],
+    "role": "viewer"
+  },
+  {
+    "id": 29,
+    "question": "SCR-004 の画面名は何ですか？",
+    "expected": ["ヘルス監視画面"],
+    "role": "viewer"
+  },
+  {
+    "id": 30,
+    "question": "CFG-002 のコード既定値は何ですか？",
+    "expected": ["HS256"],
+    "role": "viewer"
+  }
+]
