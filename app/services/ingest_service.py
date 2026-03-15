@@ -16,6 +16,7 @@ from qdrant_client.http import models
 from app.clients.qdrant_client import get_qdrant_client
 from app.core.config import openai_settings
 from app.services.document_loader import DocumentLoader
+from app.services.parse_result import ParsedBlock
 
 DEFAULT_COLLECTION = "documents"
 CHUNK_SIZE = 500
@@ -122,7 +123,14 @@ class IngestService:
         self._delete_existing_points(file_path)
 
         # 解析結果からテキストを取り出し、ノードを構築する。
-        nodes = self._build_nodes(file_path, parse_result.text, allowed_roles)
+        if parse_result.blocks:
+            nodes = self._build_nodes_from_blocks(
+                file_path,
+                parse_result.blocks,
+                allowed_roles,
+            )
+        else:
+            nodes = self._build_nodes(file_path, parse_result.text, allowed_roles)
         if not nodes:
             warnings = self._summarize_warnings(
                 parse_result.warnings
@@ -186,6 +194,7 @@ class IngestService:
         source_key: str,
         chunk_index: int,
         allowed_roles: list[str],
+        block_meta=None,
     ) -> dict[str, str | int | list[str]]:
         # 検索と権限制御のmetadataを構築する。
         metadata: dict[str, str | int | list[str]] = {
@@ -194,11 +203,35 @@ class IngestService:
             "allowed_roles": allowed_roles,
             "chunk_index": chunk_index,
         }
+        if block_meta is not None:
+            metadata.update(self._block_metadata_payload(block_meta))
         formula_desc = detect_formula_description(chunk_text)
         if formula_desc:
             metadata["formula_description"] = (
                 formula_desc  # metadataにExcel関数の説明を追加する
             )
+        return metadata
+
+    def _block_metadata_payload(self, block_meta) -> dict[str, str | list[str]]:
+        metadata: dict[str, str | list[str]] = {
+            "content_type": block_meta.content_type.value,
+        }
+        if block_meta.sheet_name:
+            metadata["sheet_name"] = block_meta.sheet_name
+        if block_meta.cell_range:
+            metadata["cell_range"] = block_meta.cell_range
+        if block_meta.block_kind:
+            metadata["block_kind"] = block_meta.block_kind.value
+        if block_meta.record_id:
+            metadata["record_id"] = block_meta.record_id
+        if block_meta.parent_record_id:
+            metadata["parent_record_id"] = block_meta.parent_record_id
+        if block_meta.record_type:
+            metadata["record_type"] = block_meta.record_type
+        if block_meta.section_name:
+            metadata["section_name"] = block_meta.section_name
+        if block_meta.related_ids:
+            metadata["related_ids"] = block_meta.related_ids
         return metadata
 
     def _summarize_warnings(self, warnings: list[str]) -> list[str]:
@@ -239,6 +272,45 @@ class IngestService:
             node.text = chunk_text
             node.metadata = metadata
             node.excluded_embed_metadata_keys = list(metadata.keys())
+
+        return nodes
+
+    def _build_nodes_from_blocks(
+        self,
+        file_path: str,
+        blocks: list[ParsedBlock],
+        allowed_roles: list[str],
+    ) -> list[TextNode]:
+        source_key = self._build_source_key(file_path)
+        nodes: list[TextNode] = []
+        chunk_index = 0
+
+        for block_index, block in enumerate(blocks):
+            block_text = block.text.strip()
+            if not block_text:
+                continue
+
+            document = Document(text=block_text, id_=f"{source_key}:{block_index}")
+            block_nodes = self.splitter.split_document(document)
+
+            for node in block_nodes:
+                chunk_text = node.text.strip()
+                if not chunk_text:
+                    continue
+                metadata = self._build_metadata(
+                    chunk_text=chunk_text,
+                    file_path=file_path,
+                    source_key=source_key,
+                    chunk_index=chunk_index,
+                    allowed_roles=allowed_roles,
+                    block_meta=block.meta,
+                )
+                node.id_ = self._build_point_id(file_path, chunk_index)
+                node.text = chunk_text
+                node.metadata = metadata
+                node.excluded_embed_metadata_keys = list(metadata.keys())
+                nodes.append(node)
+                chunk_index += 1
 
         return nodes
 

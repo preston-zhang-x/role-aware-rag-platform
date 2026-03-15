@@ -12,7 +12,13 @@ from llama_index.core.schema import TextNode
 import app.services.ingest_service as ingest_service_module
 from app.services.document_loader import DocumentLoader
 from app.services.ingest_service import IngestService, SimpleMarkdownSplitter
-from app.services.parse_result import ParseResult
+from app.services.parse_result import (
+    BlockKind,
+    ChunkMeta,
+    ContentType,
+    ParseResult,
+    ParsedBlock,
+)
 
 
 class FakeLoader(DocumentLoader):
@@ -24,12 +30,38 @@ class FakeLoader(DocumentLoader):
         return ParseResult(text=self.text, warnings=list(self.warnings))
 
 
+class FakeBlockLoader(DocumentLoader):
+    def __init__(
+        self,
+        *,
+        text: str = "fallback text",
+        blocks: Sequence[ParsedBlock] | None = None,
+        warnings: Sequence[str] | None = None,
+    ) -> None:
+        self.text = text
+        self.blocks = list(blocks or [])
+        self.warnings = list(warnings or [])
+
+    def load(self, file_path: str) -> ParseResult:
+        return ParseResult(
+            text=self.text,
+            blocks=list(self.blocks),
+            warnings=list(self.warnings),
+        )
+
+
 class FakeSplitter(SimpleMarkdownSplitter):
     def __init__(self, chunks: Sequence[str]) -> None:
         self.chunks = list(chunks)
 
     def split_document(self, document: Document) -> list[TextNode]:
         return [TextNode(text=chunk) for chunk in self.chunks]
+
+
+class EchoSplitter(SimpleMarkdownSplitter):
+    def split_document(self, document: Document) -> list[TextNode]:
+        text = document.text or ""
+        return [TextNode(text=text)] if text.strip() else []
 
 
 class FakePipeline:
@@ -321,6 +353,180 @@ class TestIngestWithLlamaIndex:
         assert "text" not in metadata
         assert "text" not in nodes[0].excluded_embed_metadata_keys
         assert nodes[0].embedding == [0.0, 0.5]
+
+    def test_ingest_prefers_blocks_when_available(
+        self,
+        monkeypatch: MonkeyPatch,
+        fake_qdrant_wrapper: FakeQdrantWrapper,
+        fake_vector_store: FakeVectorStore,
+    ) -> None:
+        blocks = [
+            ParsedBlock(
+                text="## IF-007\n- Method: DELETE",
+                meta=ChunkMeta(
+                    source_file="docs/spec.xlsx",
+                    content_type=ContentType.KEY_VALUE,
+                    sheet_name="IF一覧",
+                    block_kind=BlockKind.RECORD_SUMMARY,
+                    record_id="IF-007",
+                    record_type="IF",
+                    related_ids=["FN-007"],
+                ),
+            ),
+            ParsedBlock(
+                text="## IF-005 / Path\n- 項目名: doc_id",
+                meta=ChunkMeta(
+                    source_file="docs/spec.xlsx",
+                    content_type=ContentType.KEY_VALUE,
+                    sheet_name="IF仕様",
+                    block_kind=BlockKind.RECORD_SECTION,
+                    record_id="IF-005",
+                    record_type="IF",
+                    section_name="Path",
+                ),
+            ),
+        ]
+        ingest_service = build_service(
+            monkeypatch,
+            loader=FakeBlockLoader(text="legacy text", blocks=blocks),
+            splitter=EchoSplitter(),
+            qdrant_wrapper=fake_qdrant_wrapper,
+            vector_store=fake_vector_store,
+        )
+
+        result = ingest_service.ingest(
+            file_path="data/fixtures/japanese_spec.xlsx",
+            allowed_roles=["admin"],
+        )
+
+        assert result.total_chunks == 2
+        nodes = fake_vector_store.add_calls[0].nodes
+        assert nodes[0].text == "## IF-007\n- Method: DELETE"
+        assert nodes[1].text == "## IF-005 / Path\n- 項目名: doc_id"
+
+    def test_ingest_block_metadata_is_written_to_payload(
+        self,
+        monkeypatch: MonkeyPatch,
+        fake_qdrant_wrapper: FakeQdrantWrapper,
+        fake_vector_store: FakeVectorStore,
+    ) -> None:
+        block = ParsedBlock(
+            text="## COL-TBL-002-005\n- parent_record_id: TBL-002",
+            meta=ChunkMeta(
+                source_file="docs/spec.xlsx",
+                content_type=ContentType.KEY_VALUE,
+                sheet_name="テーブル定義",
+                cell_range="A20:L20",
+                block_kind=BlockKind.RECORD_ROW,
+                record_id="COL-TBL-002-005",
+                parent_record_id="TBL-002",
+                record_type="COL",
+                section_name=None,
+                related_ids=["TBL-002"],
+            ),
+        )
+        ingest_service = build_service(
+            monkeypatch,
+            loader=FakeBlockLoader(blocks=[block]),
+            splitter=EchoSplitter(),
+            qdrant_wrapper=fake_qdrant_wrapper,
+            vector_store=fake_vector_store,
+        )
+
+        ingest_service.ingest(
+            file_path="data/fixtures/japanese_spec.xlsx",
+            allowed_roles=["admin"],
+        )
+
+        metadata = fake_vector_store.add_calls[0].nodes[0].metadata
+        assert metadata is not None
+        assert metadata["sheet_name"] == "テーブル定義"
+        assert metadata["cell_range"] == "A20:L20"
+        assert metadata["block_kind"] == "record_row"
+        assert metadata["record_id"] == "COL-TBL-002-005"
+        assert metadata["parent_record_id"] == "TBL-002"
+        assert metadata["record_type"] == "COL"
+        assert metadata["related_ids"] == ["TBL-002"]
+
+    def test_ingest_falls_back_to_text_when_blocks_are_absent(
+        self,
+        monkeypatch: MonkeyPatch,
+        fake_qdrant_wrapper: FakeQdrantWrapper,
+        fake_vector_store: FakeVectorStore,
+    ) -> None:
+        ingest_service = build_service(
+            monkeypatch,
+            loader=FakeBlockLoader(text="legacy fallback text", blocks=[]),
+            splitter=FakeSplitter(["legacy fallback text"]),
+            qdrant_wrapper=fake_qdrant_wrapper,
+            vector_store=fake_vector_store,
+        )
+
+        result = ingest_service.ingest(
+            file_path="data/fixtures/japanese_spec.xlsx",
+            allowed_roles=["admin"],
+        )
+
+        assert result.total_chunks == 1
+        nodes = fake_vector_store.add_calls[0].nodes
+        assert nodes[0].text == "legacy fallback text"
+
+    def test_block_based_ingest_keeps_stable_chunk_order_across_runs(
+        self,
+        monkeypatch: MonkeyPatch,
+        fake_qdrant_wrapper: FakeQdrantWrapper,
+        fake_vector_store: FakeVectorStore,
+    ) -> None:
+        blocks = [
+            ParsedBlock(
+                text="## CFG-001\n- コード既定値: -",
+                meta=ChunkMeta(
+                    source_file="docs/spec.xlsx",
+                    content_type=ContentType.KEY_VALUE,
+                    block_kind=BlockKind.RECORD_SUMMARY,
+                    record_id="CFG-001",
+                    record_type="CFG",
+                ),
+            ),
+            ParsedBlock(
+                text="## CFG-002\n- コード既定値: HS256",
+                meta=ChunkMeta(
+                    source_file="docs/spec.xlsx",
+                    content_type=ContentType.KEY_VALUE,
+                    block_kind=BlockKind.RECORD_SUMMARY,
+                    record_id="CFG-002",
+                    record_type="CFG",
+                ),
+            ),
+        ]
+        ingest_service = build_service(
+            monkeypatch,
+            loader=FakeBlockLoader(blocks=blocks),
+            splitter=EchoSplitter(),
+            qdrant_wrapper=fake_qdrant_wrapper,
+            vector_store=fake_vector_store,
+        )
+
+        first = ingest_service.ingest(
+            file_path="data/fixtures/japanese_spec.xlsx",
+            allowed_roles=["admin"],
+        )
+        second = ingest_service.ingest(
+            file_path="data/fixtures/japanese_spec.xlsx",
+            allowed_roles=["admin"],
+        )
+
+        assert first.total_chunks == 2
+        assert second.total_chunks == 2
+        first_nodes = fake_vector_store.add_calls[0].nodes
+        second_nodes = fake_vector_store.add_calls[1].nodes
+        assert [node.node_id for node in first_nodes] == [
+            node.node_id for node in second_nodes
+        ]
+        assert [node.metadata["record_id"] for node in first_nodes] == [
+            "CFG-001",
+            "CFG-002",
+        ]
 
     def test_ingest_returns_summarized_warnings(
         self,

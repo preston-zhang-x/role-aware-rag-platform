@@ -16,6 +16,17 @@ class ContentType(Enum):
     SHAPE = "shape"
 
 
+class BlockKind(Enum):
+    """語義単位で扱う解析ブロックの種類。"""
+
+    SHEET_SUMMARY = "sheet_summary"
+    RECORD_SUMMARY = "record_summary"
+    RECORD_SECTION = "record_section"
+    RECORD_ROW = "record_row"
+    LEGACY_TABLE = "legacy_table"
+    LEGACY_KV = "legacy_kv"
+
+
 class ParserWarning(Enum):
     """解析中に発生した警告タイプ"""
 
@@ -41,6 +52,20 @@ class ChunkMeta:
     cell_range: str | None = None  # 例: "A1:F20"
     merged_ranges: list[str] = field(default_factory=list)
     is_broadcast_fill: bool = False  # 広播填充フラグ（token膨張を識別）
+    block_kind: BlockKind | None = None
+    record_id: str | None = None
+    parent_record_id: str | None = None
+    record_type: str | None = None
+    section_name: str | None = None
+    related_ids: list[str] = field(default_factory=list)
+
+
+@dataclass
+class ParsedBlock:
+    """検索投入用の語義ブロック。"""
+
+    text: str
+    meta: ChunkMeta
 
 
 @dataclass
@@ -52,6 +77,7 @@ class ParseResult:
     text: str
     chunks: list[ChunkMeta] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    blocks: list[ParsedBlock] = field(default_factory=list)
 
 
 class MarkdownEscaper:

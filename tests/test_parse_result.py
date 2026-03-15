@@ -1,10 +1,12 @@
 import pytest
 
 from app.services.parse_result import (
+    BlockKind,
     ChunkMeta,
     ContentType,
     MarkdownEscaper,
     ParseResult,
+    ParsedBlock,
     ParserWarning,
 )
 
@@ -26,6 +28,19 @@ class TestContentType:
     def test_enum_count(self):
         """enum の数が期待値と一致すること"""
         assert len(ContentType) == 4
+
+
+class TestBlockKind:
+    def test_enum_values(self):
+        assert BlockKind.SHEET_SUMMARY.value == "sheet_summary"
+        assert BlockKind.RECORD_SUMMARY.value == "record_summary"
+        assert BlockKind.RECORD_SECTION.value == "record_section"
+        assert BlockKind.RECORD_ROW.value == "record_row"
+        assert BlockKind.LEGACY_TABLE.value == "legacy_table"
+        assert BlockKind.LEGACY_KV.value == "legacy_kv"
+
+    def test_enum_count(self):
+        assert len(BlockKind) == 6
 
 
 # ═══════════════════════════════════════
@@ -70,6 +85,12 @@ class TestChunkMeta:
         assert chunk.cell_range is None
         assert chunk.merged_ranges == []
         assert chunk.is_broadcast_fill is False
+        assert chunk.block_kind is None
+        assert chunk.record_id is None
+        assert chunk.parent_record_id is None
+        assert chunk.record_type is None
+        assert chunk.section_name is None
+        assert chunk.related_ids == []
 
     def test_all_fields(self):
         """全フィールドを指定して生成できること"""
@@ -81,11 +102,23 @@ class TestChunkMeta:
             cell_range="A1:F20",
             merged_ranges=["B2:D4"],
             is_broadcast_fill=True,
+            block_kind=BlockKind.RECORD_SUMMARY,
+            record_id="FN-001",
+            parent_record_id="SCR-001",
+            record_type="FN",
+            section_name="Response",
+            related_ids=["IF-001"],
         )
         assert chunk.sheet_name == "DB定義"
         assert chunk.cell_range == "A1:F20"
         assert chunk.merged_ranges == ["B2:D4"]
         assert chunk.is_broadcast_fill is True
+        assert chunk.block_kind == BlockKind.RECORD_SUMMARY
+        assert chunk.record_id == "FN-001"
+        assert chunk.parent_record_id == "SCR-001"
+        assert chunk.record_type == "FN"
+        assert chunk.section_name == "Response"
+        assert chunk.related_ids == ["IF-001"]
 
     def test_merged_ranges_not_shared_between_instances(self):
         """
@@ -110,17 +143,21 @@ class TestParseResult:
         assert result.text == "# Test"
         assert result.chunks == []
         assert result.warnings == []
+        assert result.blocks == []
 
     def test_full_creation(self):
         """全フィールドを指定して生成できること"""
         chunk = ChunkMeta(source_file="test.xlsx", content_type=ContentType.TEXT)
+        block = ParsedBlock(text="## FN-001", meta=chunk)
         result = ParseResult(
             text="# Hello",
             chunks=[chunk],
             warnings=["some warning"],
+            blocks=[block],
         )
         assert len(result.chunks) == 1
         assert len(result.warnings) == 1
+        assert len(result.blocks) == 1
 
 
 # ═══════════════════════════════════════
