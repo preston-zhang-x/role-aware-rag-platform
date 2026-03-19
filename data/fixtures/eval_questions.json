@@ -37,8 +37,8 @@
   },
   {
     "id": 7,
-    "question": "ITM-SCR003-002 の初期値は何ですか？",
-    "expected": ["viewer"],
+    "question": "ITM-SCR003-002 は何を表示しますか？",
+    "expected": ["現在ログイン中ユーザーの role を表示"],
     "role": "admin"
   },
   {
@@ -85,8 +85,8 @@
   },
   {
     "id": 15,
-    "question": "IF-008 の body の `role` の既定値は何ですか？",
-    "expected": ["viewer"],
+    "question": "IF-008 の request body フィールド名は何ですか？",
+    "expected": ["question"],
     "role": "admin"
   },
   {
@@ -98,7 +98,7 @@
   {
     "id": 17,
     "question": "users テーブルの `role` カラムの既定値は何ですか？",
-    "expected": ["viewer"],
+    "expected": ["staff"],
     "role": "admin"
   },
   {
@@ -153,30 +153,90 @@
     "id": 26,
     "question": "IF-003 の成功時ステータスは何ですか？",
     "expected": ["201", "Created"],
-    "role": "editor"
+    "role": "manager"
   },
   {
     "id": 27,
     "question": "IF-006 の認可は何ですか？",
-    "expected": ["admin", "editor"],
-    "role": "editor"
+    "expected": ["admin", "manager"],
+    "role": "manager"
   },
   {
     "id": 28,
     "question": "IF-009 の名称は何ですか？",
     "expected": ["Live チェック"],
-    "role": "viewer"
+    "role": "staff"
   },
   {
     "id": 29,
     "question": "SCR-004 の画面名は何ですか？",
     "expected": ["ヘルス監視画面"],
-    "role": "viewer"
+    "role": "staff"
   },
   {
     "id": 30,
     "question": "CFG-002 のコード既定値は何ですか？",
     "expected": ["HS256"],
-    "role": "viewer"
+    "role": "staff"
+  },
+  {
+    "id": 31,
+    "question": "IF-008 の認証方法と検索時ロールの決定元は何ですか？",
+    "expected": ["Bearer", "current_user.role"],
+    "role": "admin"
+  },
+  {
+    "id": 32,
+    "question": "JWT に含めるクレームは何ですか？",
+    "expected": ["sub"],
+    "role": "admin"
+  },
+  {
+    "id": 33,
+    "question": "IF-003 と IF-006 を実行できるロールは何ですか？",
+    "expected": ["admin", "manager"],
+    "role": "manager"
+  },
+  {
+    "id": 34,
+    "question": "users.role の実装値は何ですか？",
+    "expected": ["admin", "manager", "staff"],
+    "role": "staff"
+  },
+  {
+    "id": 35,
+    "question": "ACCESS_TOKEN_EXPIRE_MINUTES のコード既定値は何分ですか？",
+    "expected": ["30"],
+    "role": "staff"
+  },
+  {
+    "id": 36,
+    "question": "RAG 検索の metadata フィルタ項目名と型は何ですか？",
+    "expected": ["allowed_roles", "list[str]"],
+    "role": "admin"
+  },
+  {
+    "id": 37,
+    "question": "再取込時に既存ポイントを識別して削除する metadata は何ですか？",
+    "expected": ["source_file", "source_key"],
+    "role": "manager"
+  },
+  {
+    "id": 38,
+    "question": "結合セル検出時に追加される warning 名は何ですか？",
+    "expected": ["MERGED_CELL_BROADCAST"],
+    "role": "admin"
+  },
+  {
+    "id": 39,
+    "question": "health 系で degraded を返す HTTP ステータスは何ですか？",
+    "expected": ["503"],
+    "role": "staff"
+  },
+  {
+    "id": 40,
+    "question": "RAG の response sources に含まれる項目を 2 つ挙げてください。",
+    "expected": ["source_file", "chunk_index"],
+    "role": "admin"
   }
 ]

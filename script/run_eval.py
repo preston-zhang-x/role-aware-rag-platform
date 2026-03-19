@@ -144,7 +144,9 @@ def normalize_text(text: str) -> str:
     return normalized.strip()
 
 
-def evaluate_answer(answer: str, expected_keywords: list[str]) -> tuple[bool, list[str]]:
+def evaluate_answer(
+    answer: str, expected_keywords: list[str]
+) -> tuple[bool, list[str]]:
     """回答に期待キーワードが含まれるか判定し、不足分も返す。"""
     normalized_answer = normalize_text(answer)
     missing_keywords = [
@@ -163,7 +165,9 @@ def determine_miss_reason(answer: str, sources_count: int, hit: bool) -> str | N
         return "no_sources"
 
     normalized_answer = normalize_text(answer)
-    if any(normalize_text(pattern) in normalized_answer for pattern in NOT_FOUND_PATTERNS):
+    if any(
+        normalize_text(pattern) in normalized_answer for pattern in NOT_FOUND_PATTERNS
+    ):
         return "not_found_answer"
 
     return "keyword_mismatch"
@@ -421,9 +425,7 @@ def generate_report(summary: dict[str, Any]) -> str:
                     else "-"
                 )
             )
-            lines.append(
-                f"- **先頭 Source**: {result['first_source_file'] or '-'}"
-            )
+            lines.append(f"- **先頭 Source**: {result['first_source_file'] or '-'}")
             if result["error"]:
                 lines.append(f"- **Error**: {result['error']}")
             lines.append(
@@ -453,14 +455,14 @@ def main() -> None:
     try:
         summary = run_eval()
     except RuntimeError as exc:
-        print(f"\n❌ {exc}")
+        print(f"\n {exc}")
         sys.exit(1)
 
     report = generate_report(summary)
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     OUTPUT_FILE.write_text(report, encoding="utf-8")
-    print(f"\n📝 レポートを保存しました: {OUTPUT_FILE}")
+    print(f"\n レポートを保存しました: {OUTPUT_FILE}")
 
     if summary["accuracy"] < 50:
         print("\n  正解率が 50% 未満です。以下を確認してください：")
