@@ -3,7 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from app.services.bm25_service import BM25Service, tokenize
+from app.services.bm25_service import (
+    BM25Service,
+    get_cached_bm25_service,
+    invalidate_bm25_cache,
+    tokenize,
+)
 
 
 @dataclass
@@ -136,3 +141,84 @@ def test_build_index_clears_state_when_collection_is_missing() -> None:
     assert indexed_count == 0
     assert service.is_indexed is False
     assert service.corpus_size == 0
+
+
+def test_get_cached_bm25_service_reuses_same_index_for_same_roles() -> None:
+    invalidate_bm25_cache()
+    wrapper = FakeQdrantWrapper(
+        responses=[
+            (
+                [
+                    FakeRecord(
+                        payload={
+                            "text": "OpenAI search platform for internal docs",
+                            "source_file": "guide.md",
+                            "chunk_index": 1,
+                        }
+                    )
+                ],
+                None,
+            )
+        ]
+    )
+
+    first = get_cached_bm25_service(
+        collection_name="documents",
+        user_roles=["staff"],
+        qdrant_wrapper=wrapper,
+    )
+    second = get_cached_bm25_service(
+        collection_name="documents",
+        user_roles=["staff"],
+        qdrant_wrapper=wrapper,
+    )
+
+    assert first is second
+    assert len(wrapper.client.scroll_calls) == 1
+
+
+def test_invalidate_bm25_cache_forces_index_rebuild() -> None:
+    invalidate_bm25_cache()
+    wrapper = FakeQdrantWrapper(
+        responses=[
+            (
+                [
+                    FakeRecord(
+                        payload={
+                            "text": "OpenAI search platform for internal docs",
+                            "source_file": "guide.md",
+                            "chunk_index": 1,
+                        }
+                    )
+                ],
+                None,
+            ),
+            (
+                [
+                    FakeRecord(
+                        payload={
+                            "text": "Budget report for finance team",
+                            "source_file": "finance.md",
+                            "chunk_index": 3,
+                        }
+                    )
+                ],
+                None,
+            ),
+        ]
+    )
+
+    first = get_cached_bm25_service(
+        collection_name="documents",
+        user_roles=["staff"],
+        qdrant_wrapper=wrapper,
+    )
+    invalidate_bm25_cache("documents")
+    second = get_cached_bm25_service(
+        collection_name="documents",
+        user_roles=["staff"],
+        qdrant_wrapper=wrapper,
+    )
+
+    assert first is not second
+    assert len(wrapper.client.scroll_calls) == 2
