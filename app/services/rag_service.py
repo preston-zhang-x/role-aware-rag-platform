@@ -7,6 +7,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+import logging
+import openai
 from openai import OpenAI
 from qdrant_client.http.models import FieldCondition, Filter, MatchAny
 
@@ -19,6 +21,9 @@ from app.services.reranker_service import (
     RerankerTransientError,
 )
 
+logger = logging.getLogger(__name__)
+FALLBACK_ANSWER = "現在サービスが混雑しています。しばらくしてからもう一度お試しください。"
+LLM_TIMEOUT_SECONDS = 30.0
 DEFAULT_COLLECTION = "documents"
 DEFAULT_TOP_K = 5
 DEFAULT_CANDIDATE_TOP_K = 20
@@ -341,14 +346,41 @@ class RagService:
             f"質問: {question}"
         )
 
-        # LLM に投げる（Chat Completion API）
-        response = self.openai_client.chat.completions.create(
-            model=openai_settings.chat_model,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_message},
-            ],
-            temperature=0.3,  # 低い＝事実に忠実、高い＝創造的
-        )
-
-        return response.choices[0].message.content or ""
+# LLM に投げる（Chat Completion API）— タイムアウト＆エラーハンドリング付き
+        try:
+            response = self.openai_client.chat.completions.create(
+                model=openai_settings.chat_model,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": user_message},
+                ],
+                temperature=0.3,
+                timeout=LLM_TIMEOUT_SECONDS,
+            )
+            return response.choices[0].message.content or ""
+        except openai.APITimeoutError:
+            logger.warning(
+                "LLM APIがタイムアウトしました (質問: %.50s...)",
+                question,
+            )
+            return FALLBACK_ANSWER
+        except openai.APIConnectionError:
+            logger.warning(
+                "LLM APIへの接続に失敗しました (質問: %.50s...)",
+                question,
+            )
+            return FALLBACK_ANSWER
+        except openai.RateLimitError:
+            logger.warning(
+                "LLM APIのレート制限に達しました (質問: %.50s...)",
+                question,
+            )
+            return FALLBACK_ANSWER
+        except openai.APIStatusError as e:
+            logger.error(
+                "LLM APIがステータスコード %d を返しました (質問: %.50s...)",
+                e.status_code,
+                question,
+                exc_info=True,
+            )
+            return FALLBACK_ANSWER
