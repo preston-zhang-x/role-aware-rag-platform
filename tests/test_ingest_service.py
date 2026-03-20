@@ -399,3 +399,26 @@ class TestIngestWithLlamaIndex:
             "ファイルから有効なテキストが抽出できませんでした、スキップ (1件)",
         ]
         assert fake_vector_store.add_calls == []
+
+    def test_ingest_invalidates_bm25_cache(
+        self,
+        monkeypatch: MonkeyPatch,
+        fake_qdrant_wrapper: FakeQdrantWrapper,
+    ) -> None:
+        invalidated: list[str] = []
+        monkeypatch.setattr(
+            ingest_service_module,
+            "invalidate_bm25_cache",
+            lambda collection_name: invalidated.append(collection_name),
+        )
+        ingest_service = build_service(
+            monkeypatch,
+            qdrant_wrapper=fake_qdrant_wrapper,
+        )
+
+        ingest_service.ingest(
+            file_path="data/fixtures/japanese_spec.xlsx",
+            allowed_roles=["admin"],
+        )
+
+        assert invalidated == ["documents"]
