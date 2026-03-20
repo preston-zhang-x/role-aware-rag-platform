@@ -25,6 +25,7 @@ _SUDACHI_SPLIT_MODE = sudachi_tokenizer.Tokenizer.SplitMode.A
 _IGNORED_PARTS_OF_SPEECH = {"補助記号", "空白"}
 
 Payload = dict[str, Any]
+_BM25_CACHE: dict[tuple[int, str, tuple[str, ...]], "BM25Service"] = {}
 
 
 @dataclass
@@ -247,3 +248,40 @@ class BM25Service:
             return str(parsed)
 
         return str(node_content)
+
+
+def get_cached_bm25_service(
+    *,
+    collection_name: str = DEFAULT_COLLECTION,
+    user_roles: list[str] | None = None,
+    qdrant_wrapper=None,
+) -> BM25Service:
+    """ロール条件ごとの BM25 インデックスを遅延構築して再利用する。"""
+    wrapper = qdrant_wrapper or get_qdrant_client()
+    cache_key = (id(wrapper), collection_name, _roles_cache_key(user_roles))
+    service = _BM25_CACHE.get(cache_key)
+    if service is None:
+        service = BM25Service(
+            collection_name=collection_name,
+            qdrant_wrapper=wrapper,
+        )
+        service.build_index(user_roles)
+        _BM25_CACHE[cache_key] = service
+    return service
+
+
+def invalidate_bm25_cache(collection_name: str | None = None) -> None:
+    """指定コレクションに紐づく BM25 キャッシュを破棄する。"""
+    if collection_name is None:
+        _BM25_CACHE.clear()
+        return
+
+    stale_keys = [key for key in _BM25_CACHE if key[1] == collection_name]
+    for key in stale_keys:
+        _BM25_CACHE.pop(key, None)
+
+
+def _roles_cache_key(user_roles: list[str] | None) -> tuple[str, ...]:
+    if not user_roles:
+        return ()
+    return tuple(sorted(set(user_roles)))

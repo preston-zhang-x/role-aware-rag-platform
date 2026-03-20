@@ -15,6 +15,7 @@ from qdrant_client.http import models
 
 from app.clients.qdrant_client import get_qdrant_client
 from app.core.config import openai_settings
+from app.services.bm25_service import invalidate_bm25_cache
 from app.services.document_loader import DocumentLoader
 
 DEFAULT_COLLECTION = "documents"
@@ -119,32 +120,37 @@ class IngestService:
     def ingest(self, file_path: str, allowed_roles: list[str]) -> IngestResult:
         # 1. 解析 2. 既存データ削除 3. 分割 4. 埋め込み 5. 保存
         parse_result = self.loader.load(file_path)
-        self._delete_existing_points(file_path)
+        invalidate_bm25_cache(self.collection_name)
+        try:
+            self._delete_existing_points(file_path)
 
-        # 解析結果からテキストを取り出し、ノードを構築する。
-        nodes = self._build_nodes(file_path, parse_result.text, allowed_roles)
-        if not nodes:
-            warnings = self._summarize_warnings(
-                parse_result.warnings
-                + ["ファイルから有効なテキストが抽出できませんでした、スキップ"]
-            )
+            # 解析結果からテキストを取り出し、ノードを構築する。
+            nodes = self._build_nodes(file_path, parse_result.text, allowed_roles)
+            if not nodes:
+                warnings = self._summarize_warnings(
+                    parse_result.warnings
+                    + ["ファイルから有効なテキストが抽出できませんでした、スキップ"]
+                )
+                return IngestResult(
+                    total_chunks=0,
+                    collection_name=self.collection_name,
+                    source_file=file_path,
+                    warnings=warnings,
+                )
+
+            pipeline = self._create_pipeline()
+            embedded_nodes = list(pipeline.run(nodes=nodes))
+            vector_store = self._create_vector_store()
+            vector_store.add(embedded_nodes)
+
             return IngestResult(
-                total_chunks=0,
+                total_chunks=len(embedded_nodes),
                 collection_name=self.collection_name,
                 source_file=file_path,
-                warnings=warnings,
+                warnings=self._summarize_warnings(parse_result.warnings),
             )
-        pipeline = self._create_pipeline()
-        embedded_nodes = list(pipeline.run(nodes=nodes))
-        vector_store = self._create_vector_store()
-        vector_store.add(embedded_nodes)
-
-        return IngestResult(
-            total_chunks=len(embedded_nodes),
-            collection_name=self.collection_name,
-            source_file=file_path,
-            warnings=self._summarize_warnings(parse_result.warnings),
-        )
+        finally:
+            invalidate_bm25_cache(self.collection_name)
 
     def _build_source_key(self, file_path: str) -> str:
         # ファイル単位で安定したキーを作る。

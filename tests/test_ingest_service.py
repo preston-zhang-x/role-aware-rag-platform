@@ -399,3 +399,77 @@ class TestIngestWithLlamaIndex:
             "ファイルから有効なテキストが抽出できませんでした、スキップ (1件)",
         ]
         assert fake_vector_store.add_calls == []
+
+    def test_ingest_invalidates_bm25_cache_before_delete_and_in_finally(
+        self,
+        monkeypatch: MonkeyPatch,
+        fake_qdrant_wrapper: FakeQdrantWrapper,
+    ) -> None:
+        events: list[str] = []
+        monkeypatch.setattr(
+            ingest_service_module,
+            "invalidate_bm25_cache",
+            lambda collection_name: events.append(f"invalidate:{collection_name}"),
+        )
+        ingest_service = build_service(
+            monkeypatch,
+            qdrant_wrapper=fake_qdrant_wrapper,
+        )
+        monkeypatch.setattr(
+            ingest_service,
+            "_delete_existing_points",
+            lambda file_path: events.append(f"delete:{file_path}"),
+        )
+
+        ingest_service.ingest(
+            file_path="data/fixtures/japanese_spec.xlsx",
+            allowed_roles=["admin"],
+        )
+
+        assert events == [
+            "invalidate:documents",
+            "delete:data/fixtures/japanese_spec.xlsx",
+            "invalidate:documents",
+        ]
+
+    def test_ingest_invalidates_bm25_cache_when_vector_store_add_fails(
+        self,
+        monkeypatch: MonkeyPatch,
+        fake_qdrant_wrapper: FakeQdrantWrapper,
+    ) -> None:
+        events: list[str] = []
+
+        class FailingVectorStore(FakeVectorStore):
+            def add(self, nodes: Sequence[TextNode], **kwargs: Any) -> list[str]:
+                super().add(nodes, **kwargs)
+                events.append("add")
+                raise RuntimeError("vector store add failed")
+
+        monkeypatch.setattr(
+            ingest_service_module,
+            "invalidate_bm25_cache",
+            lambda collection_name: events.append(f"invalidate:{collection_name}"),
+        )
+        ingest_service = build_service(
+            monkeypatch,
+            qdrant_wrapper=fake_qdrant_wrapper,
+            vector_store=FailingVectorStore(),
+        )
+        monkeypatch.setattr(
+            ingest_service,
+            "_delete_existing_points",
+            lambda file_path: events.append(f"delete:{file_path}"),
+        )
+
+        with pytest.raises(RuntimeError, match="vector store add failed"):
+            ingest_service.ingest(
+                file_path="data/fixtures/japanese_spec.xlsx",
+                allowed_roles=["admin"],
+            )
+
+        assert events == [
+            "invalidate:documents",
+            "delete:data/fixtures/japanese_spec.xlsx",
+            "add",
+            "invalidate:documents",
+        ]

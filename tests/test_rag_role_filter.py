@@ -75,7 +75,7 @@ def mock_openai_embed():
 
 
 def _build_service(mock_qdrant, mock_openai_client) -> RagService:
-    service = RagService(qdrant_wrapper=mock_qdrant)
+    service = RagService(qdrant_wrapper=mock_qdrant, retrieval_mode="vector")
     service.openai_client = mock_openai_client
     return service
 
