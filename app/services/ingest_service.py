@@ -15,6 +15,7 @@ from qdrant_client.http import models
 
 from app.clients.qdrant_client import get_qdrant_client
 from app.core.config import openai_settings
+from app.services.bm25_service import invalidate_bm25_cache
 from app.services.document_loader import DocumentLoader
 
 DEFAULT_COLLECTION = "documents"
@@ -128,6 +129,7 @@ class IngestService:
                 parse_result.warnings
                 + ["ファイルから有効なテキストが抽出できませんでした、スキップ"]
             )
+            invalidate_bm25_cache(self.collection_name)
             return IngestResult(
                 total_chunks=0,
                 collection_name=self.collection_name,
@@ -138,6 +140,7 @@ class IngestService:
         embedded_nodes = list(pipeline.run(nodes=nodes))
         vector_store = self._create_vector_store()
         vector_store.add(embedded_nodes)
+        invalidate_bm25_cache(self.collection_name)
 
         return IngestResult(
             total_chunks=len(embedded_nodes),
