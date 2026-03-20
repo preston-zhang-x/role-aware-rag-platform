@@ -23,11 +23,20 @@ class DummyChunk:
 
 
 class FakeResponse:
-    def __init__(self, status_code: int, payload: dict[str, Any]) -> None:
+    def __init__(
+        self,
+        status_code: int,
+        payload: Any,
+        *,
+        json_error: Exception | None = None,
+    ) -> None:
         self.status_code = status_code
         self._payload = payload
+        self._json_error = json_error
 
-    def json(self) -> dict[str, Any]:
+    def json(self) -> Any:
+        if self._json_error is not None:
+            raise self._json_error
         return self._payload
 
     def raise_for_status(self) -> None:
@@ -106,6 +115,48 @@ def test_reranker_raises_transient_error_on_timeout(
 ) -> None:
     def fake_post(url: str, **kwargs: Any) -> FakeResponse:
         raise httpx.TimeoutException("timeout")
+
+    monkeypatch.setattr(reranker_service_module.httpx, "post", fake_post)
+    client = CohereCompatibleRerankerClient(
+        base_url="https://gateway.example/v2",
+        api_key="secret",
+        model="rerank-v3.5",
+    )
+
+    with pytest.raises(RerankerTransientError):
+        client.rerank(
+            "how to use",
+            [DummyChunk(text="body", source_file="guide.md", chunk_index=0)],
+            top_n=1,
+        )
+
+
+def test_reranker_raises_transient_error_on_invalid_json(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_post(url: str, **kwargs: Any) -> FakeResponse:
+        return FakeResponse(200, None, json_error=ValueError("not json"))
+
+    monkeypatch.setattr(reranker_service_module.httpx, "post", fake_post)
+    client = CohereCompatibleRerankerClient(
+        base_url="https://gateway.example/v2",
+        api_key="secret",
+        model="rerank-v3.5",
+    )
+
+    with pytest.raises(RerankerTransientError):
+        client.rerank(
+            "how to use",
+            [DummyChunk(text="body", source_file="guide.md", chunk_index=0)],
+            top_n=1,
+        )
+
+
+def test_reranker_raises_transient_error_on_missing_results(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_post(url: str, **kwargs: Any) -> FakeResponse:
+        return FakeResponse(200, {"id": "abc"})
 
     monkeypatch.setattr(reranker_service_module.httpx, "post", fake_post)
     client = CohereCompatibleRerankerClient(

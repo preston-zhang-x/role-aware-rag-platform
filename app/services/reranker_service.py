@@ -100,7 +100,19 @@ class CohereCompatibleRerankerClient:
             )
 
         response.raise_for_status()
-        return self._parse_results(response.json())
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise RerankerTransientError(
+                "リランカーのレスポンスを JSON として解析できませんでした。"
+            ) from exc
+
+        try:
+            return self._parse_results(payload)
+        except ValueError as exc:
+            raise RerankerTransientError(
+                "リランカーのレスポンス形式が不正です。"
+            ) from exc
 
     def _build_headers(self) -> dict[str, str]:
         """リクエストヘッダーを構築する。"""
