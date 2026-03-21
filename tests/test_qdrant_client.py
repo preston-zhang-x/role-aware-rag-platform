@@ -1,15 +1,19 @@
 import pytest
+from qdrant_client import QdrantClient
+
 from app.clients.qdrant_client import QdrantClientWrapper, QdrantSettings
 
 
 @pytest.fixture
 def qdrant_client():
-    # テスト用のQdrantクライアントを作成する
+    # テストは外部の Qdrant サービスに依存せず、ローカルメモリで完結させる
     settings = QdrantSettings(
         qdrant_url="http://localhost:6333",
         qdrant_api_key=None,
     )
-    return QdrantClientWrapper(settings=settings)
+    wrapper = QdrantClientWrapper(settings=settings)
+    wrapper.client = QdrantClient(location=":memory:")
+    return wrapper
 
 
 def test_create_collection(qdrant_client: QdrantClientWrapper):
