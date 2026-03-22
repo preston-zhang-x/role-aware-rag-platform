@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -56,6 +57,10 @@ class RagResult:
 
     answer: str
     sources: list[SourceChunk] = field(default_factory=list)
+    latency_ms: float = 0.0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
 
 
 # ── RAG Service 本体 ────────────────────────────────────────
@@ -111,8 +116,15 @@ class RagService:
                 sources=[],
             )
         # 4. Prompt を組み立てて LLM に投げる（Generation）
-        answer = self._generate(question, sources)
-        return RagResult(answer=answer, sources=sources)
+        answer, latency_ms, prompt_tokens, completion_tokens, total_tokens = self._generate(question, sources)
+        return RagResult(
+            answer=answer,
+            sources=sources,
+            latency_ms=latency_ms,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+        )
 
     # ── Private メソッド ─────────────────────────────────────
     def _embed_query(self, text: str) -> list[float]:
@@ -330,9 +342,10 @@ class RagService:
 
         return str(node_content)
 
-    def _generate(self, question: str, sources: list[SourceChunk]) -> str:
+    def _generate(self, question: str, sources: list[SourceChunk]) -> tuple[str, float, int, int, int]:
         """
         検索で得たチャンクを元に LLM で回答を生成する。
+        Returns: (answer, latency_ms, prompt_tokens, completion_tokens, total_tokens)
         """
 
         # 検索結果を「参考情報」テキストに組み立てる
@@ -350,6 +363,7 @@ class RagService:
 
 # LLM に投げる（Chat Completion API）— タイムアウト＆エラーハンドリング付き
         try:
+            start = time.time() # タイムアウト計測開始
             response = self.openai_client.chat.completions.create(
                 model=self.openai_settings.chat_model,
                 messages=[
@@ -359,25 +373,32 @@ class RagService:
                 temperature=0.3,
                 timeout=LLM_TIMEOUT_SECONDS,
             )
-            return response.choices[0].message.content or ""
+            latency_ms = (time.time() - start) * 1000
+            # トークン数を取得
+            usage = response.usage
+            prompt_tokens = usage.prompt_tokens if usage else 0
+            completion_tokens = usage.completion_tokens if usage else 0
+            total_tokens = usage.total_tokens if usage else 0
+            answer = response.choices[0].message.content or ""
+            return (answer, latency_ms, prompt_tokens, completion_tokens, total_tokens)
         except openai.APITimeoutError:
             logger.warning(
                 "LLM APIがタイムアウトしました (質問: %.50s...)",
                 question,
             )
-            return FALLBACK_ANSWER
+            return (FALLBACK_ANSWER, 0.0, 0, 0, 0)
         except openai.APIConnectionError:
             logger.warning(
                 "LLM APIへの接続に失敗しました (質問: %.50s...)",
                 question,
             )
-            return FALLBACK_ANSWER
+            return (FALLBACK_ANSWER, 0.0, 0, 0, 0)
         except openai.RateLimitError:
             logger.warning(
                 "LLM APIのレート制限に達しました (質問: %.50s...)",
                 question,
             )
-            return FALLBACK_ANSWER
+            return (FALLBACK_ANSWER, 0.0, 0, 0, 0)
         except openai.APIStatusError as e:
             logger.error(
                 "LLM APIがステータスコード %d を返しました (質問: %.50s...)",
@@ -385,4 +406,4 @@ class RagService:
                 question,
                 exc_info=True,
             )
-            return FALLBACK_ANSWER
+            return (FALLBACK_ANSWER, 0.0, 0, 0, 0)

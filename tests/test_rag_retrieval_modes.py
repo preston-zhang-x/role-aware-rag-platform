@@ -152,7 +152,7 @@ def _build_service(
         reranker_client=reranker_client,
     )
     service.openai_client = mock_openai_client
-    service._generate = MagicMock(return_value="ok")
+    service._generate = MagicMock(return_value=("ok", 5.0, 10, 20, 30))
     wrapper.provider_calls = provider_calls
     return service, wrapper, fake_bm25
 
