@@ -59,7 +59,8 @@ class TestLLMTimeoutFallback:
         # Act: _generate を直接呼ぶ
         result = service._generate("売上の概要を教えて", sources)
         # Assert: 降格メッセージが返る & 例外は飛ばない
-        assert result == FALLBACK_ANSWER
+        assert result[0] == FALLBACK_ANSWER
+        assert result == (FALLBACK_ANSWER, 0.0, 0, 0, 0)
     def test_connection_error_returns_fallback_answer(
         self, mock_openai_client: MagicMock
     ) -> None:
@@ -69,7 +70,8 @@ class TestLLMTimeoutFallback:
         )
         service, sources = _build_service_with_sources(mock_openai_client)
         result = service._generate("売上の概要を教えて", sources)
-        assert result == FALLBACK_ANSWER
+        assert result[0] == FALLBACK_ANSWER
+        assert result == (FALLBACK_ANSWER, 0.0, 0, 0, 0)
     def test_rate_limit_returns_fallback_answer(
         self, mock_openai_client: MagicMock
     ) -> None:
@@ -86,7 +88,8 @@ class TestLLMTimeoutFallback:
         )
         service, sources = _build_service_with_sources(mock_openai_client)
         result = service._generate("売上の概要を教えて", sources)
-        assert result == FALLBACK_ANSWER
+        assert result[0] == FALLBACK_ANSWER
+        assert result == (FALLBACK_ANSWER, 0.0, 0, 0, 0)
     def test_server_error_returns_fallback_answer(
         self, mock_openai_client: MagicMock
     ) -> None:
@@ -103,7 +106,8 @@ class TestLLMTimeoutFallback:
         )
         service, sources = _build_service_with_sources(mock_openai_client)
         result = service._generate("売上の概要を教えて", sources)
-        assert result == FALLBACK_ANSWER
+        assert result[0] == FALLBACK_ANSWER
+        assert result == (FALLBACK_ANSWER, 0.0, 0, 0, 0)
     def test_ask_returns_fallback_on_llm_timeout(
         self, mock_openai_client: MagicMock
     ) -> None:
@@ -145,7 +149,11 @@ class TestLLMTimeoutFallback:
         )
         # Act: ask() を呼ぶ（検索は成功するが LLM がタイムアウト）
         result = service.ask("テスト質問", user_roles=["staff"])
-        # Assert: 降格メッセージ + ソースは取得済み
+        # Assert: 降格メッセージ + ソースは取得済み + メタデータはゼロ
         assert result.answer == FALLBACK_ANSWER
         assert len(result.sources) == 1
         assert result.sources[0].source_file == "test.pdf"
+        assert result.latency_ms == 0.0
+        assert result.total_tokens == 0
+        assert result.prompt_tokens == 0
+        assert result.completion_tokens == 0
