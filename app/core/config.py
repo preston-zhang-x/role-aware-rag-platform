@@ -1,12 +1,17 @@
+from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+ENV_FILE = REPO_ROOT / ".env"
+
 
 class SecuritySettings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -18,7 +23,7 @@ class SecuritySettings(BaseSettings):
 
 class OpenAISettings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -31,7 +36,7 @@ class OpenAISettings(BaseSettings):
 
 class RetrievalSettings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -43,7 +48,16 @@ class RetrievalSettings(BaseSettings):
     rerank_model: str | None = None
     rerank_timeout_seconds: float = Field(default=8.0, gt=0)
 
+@lru_cache(maxsize=1)
+def get_security_settings() -> SecuritySettings:
+    return SecuritySettings()
 
-security_settings = SecuritySettings()  # type: ignore
-openai_settings = OpenAISettings()  # type: ignore
-retrieval_settings = RetrievalSettings()  # type: ignore
+
+@lru_cache(maxsize=1)
+def get_openai_settings() -> OpenAISettings:
+    return OpenAISettings()
+
+
+@lru_cache(maxsize=1)
+def get_retrieval_settings() -> RetrievalSettings:
+    return RetrievalSettings()

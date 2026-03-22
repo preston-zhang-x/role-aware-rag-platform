@@ -13,7 +13,7 @@ from openai import OpenAI
 from qdrant_client.http.models import FieldCondition, Filter, MatchAny
 
 from app.clients.qdrant_client import get_qdrant_client
-from app.core.config import openai_settings, retrieval_settings
+from app.core.config import get_openai_settings, get_retrieval_settings
 from app.services.bm25_service import BM25Hit, get_cached_bm25_service
 from app.services.hybrid_retriever import reciprocal_rank_fusion
 from app.services.reranker_service import (
@@ -71,12 +71,14 @@ class RagService:
         reranker_client: CohereCompatibleRerankerClient | None = None,
         bm25_provider: Callable[..., Any] | None = None,
     ) -> None:
+        self.openai_settings = get_openai_settings()
+        self.retrieval_settings = get_retrieval_settings()
         self.collection_name = collection_name
-        self.top_k = retrieval_settings.top_k if top_k is None else top_k
+        self.top_k = self.retrieval_settings.top_k if top_k is None else top_k
         if self.top_k <= 0:
             raise ValueError("top_k must be greater than 0")
 
-        self.retrieval_mode = retrieval_settings.retrieval_mode
+        self.retrieval_mode = self.retrieval_settings.retrieval_mode
         if retrieval_mode is not None:
             self.retrieval_mode = retrieval_mode
         if self.retrieval_mode not in VALID_RETRIEVAL_MODES:
@@ -87,15 +89,15 @@ class RagService:
         self.reranker_client = reranker_client
         # OpenAI クライアント初期化（Embedding + Chat 両方で使う）
         self.openai_client = OpenAI(
-            api_key=openai_settings.openai_api_key,
-            base_url=openai_settings.openai_base_url,
+            api_key=self.openai_settings.openai_api_key,
+            base_url=self.openai_settings.openai_base_url,
         )
         if self.retrieval_mode == "hybrid_rerank" and self.reranker_client is None:
             self.reranker_client = CohereCompatibleRerankerClient(
-                base_url=retrieval_settings.rerank_base_url or "",
-                api_key=retrieval_settings.rerank_api_key or "",
-                model=retrieval_settings.rerank_model or "",
-                timeout_seconds=retrieval_settings.rerank_timeout_seconds,
+                base_url=self.retrieval_settings.rerank_base_url or "",
+                api_key=self.retrieval_settings.rerank_api_key or "",
+                model=self.retrieval_settings.rerank_model or "",
+                timeout_seconds=self.retrieval_settings.rerank_timeout_seconds,
             )
 
     def ask(self, question: str, user_roles: list[str]) -> RagResult:
@@ -118,9 +120,9 @@ class RagService:
         テキストを Embedding ベクトルに変換する。
         """
         response = self.openai_client.embeddings.create(
-            model=openai_settings.embedding_model,
+            model=self.openai_settings.embedding_model,
             input=text,
-            dimensions=openai_settings.embedding_dimensions,
+            dimensions=self.openai_settings.embedding_dimensions,
         )
         return response.data[0].embedding
 
@@ -349,7 +351,7 @@ class RagService:
 # LLM に投げる（Chat Completion API）— タイムアウト＆エラーハンドリング付き
         try:
             response = self.openai_client.chat.completions.create(
-                model=openai_settings.chat_model,
+                model=self.openai_settings.chat_model,
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": user_message},

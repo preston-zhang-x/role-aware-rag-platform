@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.config import security_settings
+from app.core.config import get_security_settings
 from app.db.models.user import User, UserRole
 from app.db.session import get_db
 
@@ -35,6 +35,7 @@ def verify_password(plain: str, hashed_password: str) -> bool:
 
 
 def create_access_token(subject: str, expires_delta: timedelta | None = None) -> str:
+    security_settings = get_security_settings()
     expire = datetime.now(timezone.utc) + (
         expires_delta
         or timedelta(minutes=security_settings.access_token_expire_minutes)
@@ -52,6 +53,7 @@ def create_access_token(subject: str, expires_delta: timedelta | None = None) ->
 
 
 def decode_access_token(token: str) -> TokenPayload:
+    security_settings = get_security_settings()
     # トークン検証失敗時の HTTP 応答例外を定義（401 Unauthorized）
     credentials_exception = HTTPException(
         status_code=http_status.HTTP_401_UNAUTHORIZED,

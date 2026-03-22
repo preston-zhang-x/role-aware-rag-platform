@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 import logging
 import sys
 from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Any, TypedDict, cast
 
+from fastapi.testclient import TestClient
 from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import Receive, Scope, Send
 
+import app.main as main_module
 from app.core import logging as logging_module
 
 
@@ -254,3 +257,17 @@ def test_request_id_middleware_generates_header_when_missing(monkeypatch) -> Non
         ),
     ]
     logging_module.request_id_ctx.set("-")
+
+
+def test_app_main_import_defers_logging_setup_until_startup(monkeypatch) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(logging_module, "setup_logging", lambda: calls.append("setup"))
+
+    reloaded = importlib.reload(main_module)
+
+    assert calls == []
+
+    with TestClient(reloaded.app):
+        pass
+
+    assert calls == ["setup"]

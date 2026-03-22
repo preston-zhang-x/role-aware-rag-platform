@@ -1,26 +1,28 @@
-from typing import Optional
+from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams
 
+from app.core.config import ENV_FILE
+
 
 class QdrantSettings(BaseSettings):
     # .env からQdrant接続設定を読み込む
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore",
     )
 
     qdrant_url: str = "http://localhost:6333"
-    qdrant_api_key: Optional[str] = None
+    qdrant_api_key: str | None = None
 
 
 class QdrantClientWrapper:
-    def __init__(self, settings: Optional[QdrantSettings] = None):
+    def __init__(self, settings: QdrantSettings | None = None):
         # 設定が未指定の場合はデフォルト設定を使う
-        self.settings = settings or QdrantSettings()
+        self.settings = settings or get_qdrant_settings()
 
         self.client = QdrantClient(
             url=self.settings.qdrant_url,
@@ -76,13 +78,12 @@ class QdrantClientWrapper:
         # Qdrant サーバーへの接続を確認する
         self.client.get_collections()
 
+@lru_cache(maxsize=1)
+def get_qdrant_settings() -> QdrantSettings:
+    return QdrantSettings()
 
-_qdrant_client: Optional[QdrantClientWrapper] = None
 
-
+@lru_cache(maxsize=1)
 def get_qdrant_client() -> QdrantClientWrapper:
     # アプリ全体で使う単一クライアントを返す
-    global _qdrant_client
-    if _qdrant_client is None:
-        _qdrant_client = QdrantClientWrapper()
-    return _qdrant_client
+    return QdrantClientWrapper()

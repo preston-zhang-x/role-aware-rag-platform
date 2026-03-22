@@ -3,13 +3,13 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app.clients.qdrant_client import get_qdrant_client
-from app.db.session import engine
+from app.db.session import get_engine
 
 router = APIRouter(prefix="/api/v1/health", tags=["health"])
 
 
 def check_database() -> None:
-    with engine.connect() as connection:
+    with get_engine().connect() as connection:
         connection.execute(text("SELECT 1"))
 
 
