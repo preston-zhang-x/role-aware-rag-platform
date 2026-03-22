@@ -1,7 +1,12 @@
 import pytest
 from qdrant_client import QdrantClient
 
-from app.clients.qdrant_client import QdrantClientWrapper, QdrantSettings
+import app.clients.qdrant_client as qdrant_module
+from app.clients.qdrant_client import (
+    QdrantClientWrapper,
+    QdrantSettings,
+    get_qdrant_client,
+)
 
 
 @pytest.fixture
@@ -54,3 +59,20 @@ def test_delete_collection(qdrant_client: QdrantClientWrapper):
     
     exists = qdrant_client.collection_exists(collection_name)
     assert exists is False, "コレクションは削除されているはずです"
+
+
+def test_get_qdrant_client_reuses_cached_wrapper(monkeypatch) -> None:
+    instances: list[object] = []
+
+    class FakeWrapper:
+        def __init__(self) -> None:
+            instances.append(self)
+
+    qdrant_module.get_qdrant_client.cache_clear()
+    monkeypatch.setattr(qdrant_module, "QdrantClientWrapper", FakeWrapper)
+
+    first = get_qdrant_client()
+    second = get_qdrant_client()
+
+    assert first is second
+    assert instances == [first]

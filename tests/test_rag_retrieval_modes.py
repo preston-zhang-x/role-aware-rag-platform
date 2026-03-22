@@ -257,8 +257,8 @@ def test_hybrid_rerank_requires_reranker_configuration(
 ) -> None:
     monkeypatch.setattr(
         rag_service_module,
-        "retrieval_settings",
-        SimpleNamespace(
+        "get_retrieval_settings",
+        lambda: SimpleNamespace(
             top_k=5,
             retrieval_mode="hybrid",
             rerank_base_url=None,

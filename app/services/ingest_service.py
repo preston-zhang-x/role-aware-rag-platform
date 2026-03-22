@@ -14,7 +14,7 @@ from llama_index.vector_stores.qdrant import QdrantVectorStore
 from qdrant_client.http import models
 
 from app.clients.qdrant_client import get_qdrant_client
-from app.core.config import openai_settings
+from app.core.config import get_openai_settings
 from app.services.bm25_service import invalidate_bm25_cache
 from app.services.document_loader import DocumentLoader
 
@@ -114,7 +114,8 @@ class IngestService:
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
         )
-        self.embedding_model = openai_settings.embedding_model
+        self.openai_settings = get_openai_settings()
+        self.embedding_model = self.openai_settings.embedding_model
         self.qdrant_wrapper = qdrant_wrapper or get_qdrant_client()
 
     def ingest(self, file_path: str, allowed_roles: list[str]) -> IngestResult:
@@ -171,9 +172,9 @@ class IngestService:
         # 埋め込み生成だけを LlamaIndex の pipeline に任せる。
         embedding = OpenAIEmbedding(
             model=self.embedding_model,
-            api_key=openai_settings.openai_api_key,
-            api_base=openai_settings.openai_base_url,
-            dimensions=openai_settings.embedding_dimensions,
+            api_key=self.openai_settings.openai_api_key,
+            api_base=self.openai_settings.openai_base_url,
+            dimensions=self.openai_settings.embedding_dimensions,
             embed_batch_size=BATCH_SIZE,
         )
         return IngestionPipeline(transformations=[embedding])

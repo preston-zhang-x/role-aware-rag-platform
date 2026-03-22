@@ -196,9 +196,9 @@ class TestFactories:
         assert captured["transformations"] == pipeline.transformations
         assert captured["embedding_kwargs"] == {
             "model": ingest_service.embedding_model,
-            "api_key": ingest_service_module.openai_settings.openai_api_key,
-            "api_base": ingest_service_module.openai_settings.openai_base_url,
-            "dimensions": ingest_service_module.openai_settings.embedding_dimensions,
+            "api_key": ingest_service.openai_settings.openai_api_key,
+            "api_base": ingest_service.openai_settings.openai_base_url,
+            "dimensions": ingest_service.openai_settings.embedding_dimensions,
             "embed_batch_size": ingest_service_module.BATCH_SIZE,
         }
 
