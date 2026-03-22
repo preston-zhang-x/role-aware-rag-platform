@@ -152,6 +152,7 @@ def _build_service(
         reranker_client=reranker_client,
     )
     service.openai_client = mock_openai_client
+    service.score_threshold = 0.0  # テスト用: フィルタ無効化
     service._generate = MagicMock(return_value=("ok", 5.0, 10, 20, 30))
     wrapper.provider_calls = provider_calls
     return service, wrapper, fake_bm25
@@ -261,6 +262,7 @@ def test_hybrid_rerank_requires_reranker_configuration(
         lambda: SimpleNamespace(
             top_k=5,
             retrieval_mode="hybrid",
+            score_threshold=0.0,
             rerank_base_url=None,
             rerank_api_key=None,
             rerank_model=None,

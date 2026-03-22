@@ -460,3 +460,65 @@ class TestRerankEdgeCases:
         assert result[0].text == "b"
         assert result[1].text == "a"
         assert result[2].text == "c"
+
+
+# ── _filter_by_score テスト ──────────────────────────────────
+
+
+class TestFilterByScore:
+    """_filter_by_score の全ブランチをカバーする。"""
+
+    def test_threshold_zero_returns_all(
+        self, mock_openai_client: MagicMock
+    ) -> None:
+        """閾値が 0 → フィルタ無効、全件返す。"""
+        service, _ = _build_service(mock_openai_client)
+        service.score_threshold = 0.0
+        sources = [
+            SourceChunk(text="low", source_file="l.md", score=0.01),
+            SourceChunk(text="high", source_file="h.md", score=0.9),
+        ]
+        result = service._filter_by_score(sources)
+        assert len(result) == 2
+
+    def test_threshold_filters_low_scores(
+        self, mock_openai_client: MagicMock
+    ) -> None:
+        """閾値 0.5 → 低スコアが除外される。"""
+        service, _ = _build_service(mock_openai_client)
+        service.score_threshold = 0.5
+        sources = [
+            SourceChunk(text="low", source_file="l.md", score=0.1),
+            SourceChunk(text="mid", source_file="m.md", score=0.5),
+            SourceChunk(text="high", source_file="h.md", score=0.9),
+        ]
+        result = service._filter_by_score(sources)
+        assert len(result) == 2
+        assert result[0].text == "mid"
+        assert result[1].text == "high"
+
+    def test_threshold_filters_all(
+        self, mock_openai_client: MagicMock
+    ) -> None:
+        """全チャンクが閾値未満 → 空リスト。"""
+        service, _ = _build_service(mock_openai_client)
+        service.score_threshold = 0.9
+        sources = [
+            SourceChunk(text="a", source_file="a.md", score=0.1),
+            SourceChunk(text="b", source_file="b.md", score=0.2),
+        ]
+        result = service._filter_by_score(sources)
+        assert result == []
+
+    def test_threshold_keeps_all_when_above(
+        self, mock_openai_client: MagicMock
+    ) -> None:
+        """全チャンクが閾値以上 → ログ出力なしで全件返す。"""
+        service, _ = _build_service(mock_openai_client)
+        service.score_threshold = 0.1
+        sources = [
+            SourceChunk(text="a", source_file="a.md", score=0.5),
+            SourceChunk(text="b", source_file="b.md", score=0.9),
+        ]
+        result = service._filter_by_score(sources)
+        assert len(result) == 2
