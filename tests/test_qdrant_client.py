@@ -1,15 +1,24 @@
 import pytest
-from app.clients.qdrant_client import QdrantClientWrapper, QdrantSettings
+from qdrant_client import QdrantClient
+
+import app.clients.qdrant_client as qdrant_module
+from app.clients.qdrant_client import (
+    QdrantClientWrapper,
+    QdrantSettings,
+    get_qdrant_client,
+)
 
 
 @pytest.fixture
 def qdrant_client():
-    # テスト用のQdrantクライアントを作成する
+    # テストは外部の Qdrant サービスに依存せず、ローカルメモリで完結させる
     settings = QdrantSettings(
         qdrant_url="http://localhost:6333",
         qdrant_api_key=None,
     )
-    return QdrantClientWrapper(settings=settings)
+    wrapper = QdrantClientWrapper(settings=settings)
+    wrapper.client = QdrantClient(location=":memory:")
+    return wrapper
 
 
 def test_create_collection(qdrant_client: QdrantClientWrapper):
@@ -50,3 +59,20 @@ def test_delete_collection(qdrant_client: QdrantClientWrapper):
     
     exists = qdrant_client.collection_exists(collection_name)
     assert exists is False, "コレクションは削除されているはずです"
+
+
+def test_get_qdrant_client_reuses_cached_wrapper(monkeypatch) -> None:
+    instances: list[object] = []
+
+    class FakeWrapper:
+        def __init__(self) -> None:
+            instances.append(self)
+
+    qdrant_module.get_qdrant_client.cache_clear()
+    monkeypatch.setattr(qdrant_module, "QdrantClientWrapper", FakeWrapper)
+
+    first = get_qdrant_client()
+    second = get_qdrant_client()
+
+    assert first is second
+    assert instances == [first]

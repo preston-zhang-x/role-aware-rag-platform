@@ -27,10 +27,16 @@ class SourceOut(BaseModel):
     score: float
     chunk_index: int
 
+class MetadataOut(BaseModel):
+    latency_ms: float
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
 
 class AskResponse(BaseModel):
     answer: str
     sources: list[SourceOut]
+    metadata: MetadataOut
 
 
 # ── エンドポイント ──────────────────────────────────────────
@@ -63,6 +69,12 @@ def ask(request: AskRequest, current_user: User = Depends(get_current_active_use
                 )
                 for src in result.sources
             ],
+            metadata=MetadataOut(
+                latency_ms=result.latency_ms,
+                prompt_tokens=result.prompt_tokens,
+                completion_tokens=result.completion_tokens,
+                total_tokens=result.total_tokens,
+            ),
         )
 
     except Exception as e:

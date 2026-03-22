@@ -75,7 +75,7 @@ def mock_openai_embed():
 
 
 def _build_service(mock_qdrant, mock_openai_client) -> RagService:
-    service = RagService(qdrant_wrapper=mock_qdrant)
+    service = RagService(qdrant_wrapper=mock_qdrant, retrieval_mode="vector")
     service.openai_client = mock_openai_client
     return service
 
@@ -91,7 +91,7 @@ class TestRoleFilter:
         )
 
         service = _build_service(mock_qdrant, mock_openai_embed)
-        service._generate = MagicMock(return_value="これは Admin 向けの回答です")
+        service._generate = MagicMock(return_value=("これは Admin 向けの回答です", 10.0, 100, 50, 150))
         result = service.ask("財務データ", user_roles=["admin"])
 
         assert len(result.sources) == 2
@@ -114,7 +114,7 @@ class TestRoleFilter:
         )
 
         service = _build_service(mock_qdrant, mock_openai_embed)
-        service._generate = MagicMock(return_value="これは Staff 向けの回答です")
+        service._generate = MagicMock(return_value=("これは Staff 向けの回答です", 5.0, 80, 30, 110))
 
         result = service.ask("財務データ", user_roles=["staff"])
 
@@ -191,10 +191,16 @@ class TestRoleFilter:
     def test_generate_builds_context_and_returns_llm_message(
         self, mock_qdrant, mock_openai_embed
     ):
+        mock_usage = MagicMock()
+        mock_usage.prompt_tokens = 200
+        mock_usage.completion_tokens = 80
+        mock_usage.total_tokens = 280
+
         mock_response = MagicMock()
         mock_response.choices = [
             MagicMock(message=MagicMock(content="出典付きの回答です"))
         ]
+        mock_response.usage = mock_usage
         mock_openai_embed.chat.completions.create.return_value = mock_response
 
         service = _build_service(mock_qdrant, mock_openai_embed)
@@ -213,9 +219,13 @@ class TestRoleFilter:
             ),
         ]
 
-        answer = service._generate("売上の要点を教えてください", sources)
+        result = service._generate("売上の要点を教えてください", sources)
 
-        assert answer == "出典付きの回答です"
+        assert result[0] == "出典付きの回答です"
+        assert result[1] >= 0  # latency_ms >= 0 (mock call is near-instant)
+        assert result[2] == 200  # prompt_tokens
+        assert result[3] == 80   # completion_tokens
+        assert result[4] == 280  # total_tokens
 
         call_args = mock_openai_embed.chat.completions.create.call_args
         assert call_args.kwargs["model"]
