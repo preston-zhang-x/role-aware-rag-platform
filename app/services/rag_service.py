@@ -89,6 +89,7 @@ class RagService:
         if self.retrieval_mode not in VALID_RETRIEVAL_MODES:
             raise ValueError(f"unsupported retrieval_mode: {self.retrieval_mode}")
 
+        self.score_threshold = self.retrieval_settings.score_threshold
         self.qdrant_wrapper = qdrant_wrapper or get_qdrant_client()
         self.bm25_provider = bm25_provider or get_cached_bm25_service
         self.reranker_client = reranker_client
@@ -145,14 +146,16 @@ class RagService:
     ) -> list[SourceChunk]:
         """質問の内容とユーザー権限に基づいてソースを取得する。"""
         if self.retrieval_mode == "vector":
-            return self._search(
+            sources = self._search(
                 self._embed_query(question),
                 user_roles,
                 limit=self.top_k,
             )
+            return self._filter_by_score(sources)
 
         if self.retrieval_mode == "bm25":
-            return self._search_bm25(question, user_roles, limit=self.top_k)
+            sources = self._search_bm25(question, user_roles, limit=self.top_k)
+            return self._filter_by_score(sources)
 
         hybrid_sources = self._search_hybrid(
             question,
@@ -160,9 +163,11 @@ class RagService:
             candidate_limit=self.candidate_top_k,
         )
         if self.retrieval_mode == "hybrid":
-            return hybrid_sources[: self.top_k]
+            return self._filter_by_score(hybrid_sources[: self.top_k])
 
-        return self._rerank_sources(question, hybrid_sources)
+        return self._filter_by_score(
+            self._rerank_sources(question, hybrid_sources)
+        )
 
     @property
     def candidate_top_k(self) -> int:
@@ -285,6 +290,20 @@ class RagService:
             seen_indexes.add(index)
 
         return ordered[: self.top_k]
+
+    def _filter_by_score(self, sources: list[SourceChunk]) -> list[SourceChunk]:
+        """スコアが閾値未満のチャンクを除外する。"""
+        if self.score_threshold <= 0:
+            return sources
+        filtered = [s for s in sources if s.score >= self.score_threshold]
+        dropped = len(sources) - len(filtered)
+        if dropped > 0:
+            logger.info(
+                "score_threshold=%s により %d 件のチャンクを除外しました",
+                self.score_threshold,
+                dropped,
+            )
+        return filtered
 
     def _build_role_filter(self, user_roles: list[str]) -> Filter:
         """ユーザーの権限に基づいたフィルターを構築する。"""
