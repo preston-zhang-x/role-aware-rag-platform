@@ -7,6 +7,7 @@ from app.api.v1.docs import router as docs_router
 from app.api.v1.health import router as health_router
 from app.api.v1.rag import router as rag_router
 from app.core.logging import RequestIdMiddleware, setup_logging
+from app.core.errors import AppError, app_error_handler, generic_exception_handler
 
 
 @asynccontextmanager
@@ -16,6 +17,9 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="Role Aware RAG Platform", lifespan=lifespan)
+
+app.add_exception_handler(AppError, app_error_handler)
+app.add_exception_handler(Exception, generic_exception_handler)
 
 app.add_middleware(RequestIdMiddleware)
 app.include_router(health_router)
