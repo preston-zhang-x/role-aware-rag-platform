@@ -136,7 +136,9 @@ def _build_service(
     top_k: int = 5,
 ) -> tuple[RagService, MagicMock, FakeBM25Service]:
     wrapper = MagicMock()
-    wrapper.client.query_points.return_value = FakeQueryResult(points=vector_points or [])
+    wrapper.client.query_points.return_value = FakeQueryResult(
+        points=vector_points or []
+    )
     fake_bm25 = FakeBM25Service(bm25_hits or [])
     provider_calls: list[dict[str, Any]] = []
 

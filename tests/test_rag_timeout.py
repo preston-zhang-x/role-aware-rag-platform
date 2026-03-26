@@ -1,17 +1,18 @@
 """tests/test_rag_timeout.py
 LLM API の超時・障害時に降格レスポンスを返すことを確認するテスト。
 """
+
 from __future__ import annotations
 from unittest.mock import MagicMock, patch
 import openai
 import pytest
 from app.services.rag_service import FALLBACK_ANSWER, RagService, SourceChunk
 
+
 # ── テスト用 Fixture ──────────────────────────────────────────
 @pytest.fixture
 def mock_openai_client():
-    """OpenAI クライアントの Mock を生成する。
-    """
+    """OpenAI クライアントの Mock を生成する。"""
     fake_embedding = [0.1] * 8
     with patch("app.services.rag_service.OpenAI") as mock_openai_class:
         mock_client = MagicMock()
@@ -21,11 +22,12 @@ def mock_openai_client():
         embedding_response.data = [MagicMock(embedding=fake_embedding)]
         mock_client.embeddings.create.return_value = embedding_response
         yield mock_client
+
+
 def _build_service_with_sources(
     mock_openai_client: MagicMock,
 ) -> tuple[RagService, list[SourceChunk]]:
-    """テスト用に RagService を構築し、テスト用ソースを返す。
-    """
+    """テスト用に RagService を構築し、テスト用ソースを返す。"""
     wrapper = MagicMock()
     service = RagService(
         qdrant_wrapper=wrapper,
@@ -42,18 +44,19 @@ def _build_service_with_sources(
         ),
     ]
     return service, sources
+
+
 # ── テストケース ─────────────────────────────────────────────
 class TestLLMTimeoutFallback:
-    """LLM API 障害時の降格テスト。
-    """
+    """LLM API 障害時の降格テスト。"""
+
     def test_timeout_returns_fallback_answer(
         self, mock_openai_client: MagicMock
     ) -> None:
-        """タイムアウト時に降格レスポンスを返す。
-        """
+        """タイムアウト時に降格レスポンスを返す。"""
         # Arrange: LLM 呼び出しでタイムアウトを発生させる
-        mock_openai_client.chat.completions.create.side_effect = (
-            openai.APITimeoutError(request=MagicMock())
+        mock_openai_client.chat.completions.create.side_effect = openai.APITimeoutError(
+            request=MagicMock()
         )
         service, sources = _build_service_with_sources(mock_openai_client)
         # Act: _generate を直接呼ぶ
@@ -61,6 +64,7 @@ class TestLLMTimeoutFallback:
         # Assert: 降格メッセージが返る & 例外は飛ばない
         assert result[0] == FALLBACK_ANSWER
         assert result == (FALLBACK_ANSWER, 0.0, 0, 0, 0)
+
     def test_connection_error_returns_fallback_answer(
         self, mock_openai_client: MagicMock
     ) -> None:
@@ -72,6 +76,7 @@ class TestLLMTimeoutFallback:
         result = service._generate("売上の概要を教えて", sources)
         assert result[0] == FALLBACK_ANSWER
         assert result == (FALLBACK_ANSWER, 0.0, 0, 0, 0)
+
     def test_rate_limit_returns_fallback_answer(
         self, mock_openai_client: MagicMock
     ) -> None:
@@ -79,17 +84,16 @@ class TestLLMTimeoutFallback:
         mock_response = MagicMock()
         mock_response.status_code = 429
         mock_response.headers = {}
-        mock_openai_client.chat.completions.create.side_effect = (
-            openai.RateLimitError(
-                message="rate limit",
-                response=mock_response,
-                body=None,
-            )
+        mock_openai_client.chat.completions.create.side_effect = openai.RateLimitError(
+            message="rate limit",
+            response=mock_response,
+            body=None,
         )
         service, sources = _build_service_with_sources(mock_openai_client)
         result = service._generate("売上の概要を教えて", sources)
         assert result[0] == FALLBACK_ANSWER
         assert result == (FALLBACK_ANSWER, 0.0, 0, 0, 0)
+
     def test_server_error_returns_fallback_answer(
         self, mock_openai_client: MagicMock
     ) -> None:
@@ -108,6 +112,7 @@ class TestLLMTimeoutFallback:
         result = service._generate("売上の概要を教えて", sources)
         assert result[0] == FALLBACK_ANSWER
         assert result == (FALLBACK_ANSWER, 0.0, 0, 0, 0)
+
     def test_ask_returns_fallback_on_llm_timeout(
         self, mock_openai_client: MagicMock
     ) -> None:
@@ -116,13 +121,16 @@ class TestLLMTimeoutFallback:
         """
         from dataclasses import dataclass
         from typing import Any
+
         @dataclass
         class FakePoint:
             payload: dict[str, Any]
             score: float
+
         @dataclass
         class FakeQueryResult:
             points: list[FakePoint]
+
         # Qdrant は正常に動く（検索結果あり）
         wrapper = MagicMock()
         wrapper.client.query_points.return_value = FakeQueryResult(
@@ -144,8 +152,8 @@ class TestLLMTimeoutFallback:
         )
         service.openai_client = mock_openai_client
         # LLM だけタイムアウト
-        mock_openai_client.chat.completions.create.side_effect = (
-            openai.APITimeoutError(request=MagicMock())
+        mock_openai_client.chat.completions.create.side_effect = openai.APITimeoutError(
+            request=MagicMock()
         )
         # Act: ask() を呼ぶ（検索は成功するが LLM がタイムアウト）
         result = service.ask("テスト質問", user_roles=["staff"])

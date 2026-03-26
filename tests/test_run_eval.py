@@ -19,7 +19,9 @@ def make_response(
     )
 
 
-def test_run_eval_requires_admin_credentials_before_requests(monkeypatch: pytest.MonkeyPatch):
+def test_run_eval_requires_admin_credentials_before_requests(
+    monkeypatch: pytest.MonkeyPatch,
+):
     monkeypatch.delenv("EVAL_ADMIN_USERNAME", raising=False)
     monkeypatch.delenv("EVAL_ADMIN_PASSWORD", raising=False)
 
@@ -125,7 +127,9 @@ def test_determine_miss_reason_classifies_expected_categories():
         )
         == "not_found_answer"
     )
-    assert run_eval.determine_miss_reason("partial answer", 2, False) == "keyword_mismatch"
+    assert (
+        run_eval.determine_miss_reason("partial answer", 2, False) == "keyword_mismatch"
+    )
     assert run_eval.determine_miss_reason("full answer", 2, True) is None
 
 

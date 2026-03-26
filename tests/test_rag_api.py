@@ -18,6 +18,7 @@ from app.services.rag_service import RagResult, SourceChunk
 
 # ── Fixture ──────────────────────────────────────────────────
 
+
 def _fake_user() -> User:
     """テスト用の偽ユーザーを生成する。"""
     user = MagicMock(spec=User)

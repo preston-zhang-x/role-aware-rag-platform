@@ -1,4 +1,3 @@
-
 from fastapi.testclient import TestClient
 import pytest
 from sqlalchemy import StaticPool, create_engine
@@ -14,7 +13,7 @@ def test_db_engine():
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
-        poolclass=StaticPool, # Use StaticPool to allow multiple connections to the in-memory database
+        poolclass=StaticPool,  # Use StaticPool to allow multiple connections to the in-memory database
     )
 
     Base.metadata.create_all(bind=engine)
@@ -25,20 +24,21 @@ def test_db_engine():
     Base.metadata.drop_all(bind=engine)
     engine.dispose()
 
+
 @pytest.fixture(scope="function")
 def test_db_session(test_db_engine):
     from sqlalchemy.orm import sessionmaker
 
     TestingSessionLocal = sessionmaker(
-        autocommit=False, 
-        autoflush=False, 
-        bind=test_db_engine)
-    
+        autocommit=False, autoflush=False, bind=test_db_engine
+    )
+
     session = TestingSessionLocal()
     try:
-        yield session #return the session to the test
+        yield session  # return the session to the test
     finally:
         session.close()
+
 
 @pytest.fixture(scope="function")
 def client(test_db_session: Session):
@@ -55,4 +55,3 @@ def client(test_db_session: Session):
         yield test_client
 
     fastapi_app.dependency_overrides.clear()
-    

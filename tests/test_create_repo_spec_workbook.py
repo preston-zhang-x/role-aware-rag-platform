@@ -63,7 +63,9 @@ def test_write_repo_spec_workbook_generates_current_and_styled_workbook(tmp_path
     assert saved_path == output_path
     workbook = load_workbook(saved_path)
     try:
-        assert {"表紙・改定履歴", "画面設計_RAG問合せ", "認可マトリクス"} <= set(workbook.sheetnames)
+        assert {"表紙・改定履歴", "画面設計_RAG問合せ", "認可マトリクス"} <= set(
+            workbook.sheetnames
+        )
 
         cover = workbook["表紙・改定履歴"]
         rag = workbook["画面設計_RAG問合せ"]
@@ -77,8 +79,20 @@ def test_write_repo_spec_workbook_generates_current_and_styled_workbook(tmp_path
         assert rag["F9"].value == "JWT から解決した current_user.role"
         assert rag.sheet_view.showGridLines is False
 
-        auth_headers = [auth_matrix.cell(row=5, column=col).value for col in range(1, 10)]
-        assert auth_headers == ["IF-ID", "名称", "Path", "匿名", "admin", "manager", "staff", "認可方式", "備考"]
+        auth_headers = [
+            auth_matrix.cell(row=5, column=col).value for col in range(1, 10)
+        ]
+        assert auth_headers == [
+            "IF-ID",
+            "名称",
+            "Path",
+            "匿名",
+            "admin",
+            "manager",
+            "staff",
+            "認可方式",
+            "備考",
+        ]
 
         if_008_row = None
         for row_index in range(6, auth_matrix.max_row + 1):
@@ -87,7 +101,9 @@ def test_write_repo_spec_workbook_generates_current_and_styled_workbook(tmp_path
                 break
 
         assert if_008_row is not None
-        assert [auth_matrix.cell(row=if_008_row, column=col).value for col in range(4, 8)] == ["N", "Y", "Y", "Y"]
+        assert [
+            auth_matrix.cell(row=if_008_row, column=col).value for col in range(4, 8)
+        ] == ["N", "Y", "Y", "Y"]
         assert auth_matrix["A5"].border.left.style == "medium"
 
         all_text = workbook_text_values(workbook)

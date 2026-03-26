@@ -25,7 +25,6 @@ def test_create_collection(qdrant_client: QdrantClientWrapper):
     # コレクション作成と存在確認をテストする
     collection_name = "test_collection"
     vector_size = 128
-    
 
     qdrant_client.delete_collection(collection_name)
 
@@ -33,7 +32,7 @@ def test_create_collection(qdrant_client: QdrantClientWrapper):
         collection_name=collection_name,
         vector_size=vector_size,
     )
-    
+
     assert result is True, "コレクションの作成に失敗しました"
 
     exists = qdrant_client.collection_exists(collection_name)
@@ -51,12 +50,12 @@ def test_collection_exists(qdrant_client: QdrantClientWrapper):
 def test_delete_collection(qdrant_client: QdrantClientWrapper):
     # コレクション削除後に存在しないことを確認する
     collection_name = "temp_collection"
-    
+
     qdrant_client.create_collection(collection_name, vector_size=128)
-    
+
     result = qdrant_client.delete_collection(collection_name)
     assert result is True, "コレクションの削除に失敗しました"
-    
+
     exists = qdrant_client.collection_exists(collection_name)
     assert exists is False, "コレクションは削除されているはずです"
 

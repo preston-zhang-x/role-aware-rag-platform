@@ -91,7 +91,9 @@ class TestRoleFilter:
         )
 
         service = _build_service(mock_qdrant, mock_openai_embed)
-        service._generate = MagicMock(return_value=("これは Admin 向けの回答です", 10.0, 100, 50, 150))
+        service._generate = MagicMock(
+            return_value=("これは Admin 向けの回答です", 10.0, 100, 50, 150)
+        )
         result = service.ask("財務データ", user_roles=["admin"])
 
         assert len(result.sources) == 2
@@ -114,7 +116,9 @@ class TestRoleFilter:
         )
 
         service = _build_service(mock_qdrant, mock_openai_embed)
-        service._generate = MagicMock(return_value=("これは Staff 向けの回答です", 5.0, 80, 30, 110))
+        service._generate = MagicMock(
+            return_value=("これは Staff 向けの回答です", 5.0, 80, 30, 110)
+        )
 
         result = service.ask("財務データ", user_roles=["staff"])
 
@@ -224,7 +228,7 @@ class TestRoleFilter:
         assert result[0] == "出典付きの回答です"
         assert result[1] >= 0  # latency_ms >= 0 (mock call is near-instant)
         assert result[2] == 200  # prompt_tokens
-        assert result[3] == 80   # completion_tokens
+        assert result[3] == 80  # completion_tokens
         assert result[4] == 280  # total_tokens
 
         call_args = mock_openai_embed.chat.completions.create.call_args
@@ -233,4 +237,6 @@ class TestRoleFilter:
         assert call_args.kwargs["messages"][0]["role"] == "system"
         assert "finance_report.pdf" in call_args.kwargs["messages"][1]["content"]
         assert "appendix.md" in call_args.kwargs["messages"][1]["content"]
-        assert "売上の要点を教えてください" in call_args.kwargs["messages"][1]["content"]
+        assert (
+            "売上の要点を教えてください" in call_args.kwargs["messages"][1]["content"]
+        )

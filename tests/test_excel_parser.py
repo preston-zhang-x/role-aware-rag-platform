@@ -371,7 +371,10 @@ class TestHeuristicScan:
         result = parser.parse(str(semantic_text_excel))
         assert "## 1. システム概要" in result.text
         assert "本システムは受発注情報を一元管理する業務システムです。" in result.text
-        assert "## 本システムは受発注情報を一元管理する業務システムです。" not in result.text
+        assert (
+            "## 本システムは受発注情報を一元管理する業務システムです。"
+            not in result.text
+        )
         assert "## 補足:" not in result.text
 
     def test_table_trimmed_to_used_columns(self, parser, wide_sheet_table_excel):

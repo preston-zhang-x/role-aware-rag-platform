@@ -27,11 +27,13 @@ class SourceOut(BaseModel):
     score: float
     chunk_index: int
 
+
 class MetadataOut(BaseModel):
     latency_ms: float
     prompt_tokens: int
     completion_tokens: int
     total_tokens: int
+
 
 class AskResponse(BaseModel):
     answer: str
