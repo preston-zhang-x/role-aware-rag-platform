@@ -1,5 +1,3 @@
-import pytest
-
 from app.services.parse_result import (
     ChunkMeta,
     ContentType,

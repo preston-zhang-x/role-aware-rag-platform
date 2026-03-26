@@ -3,14 +3,11 @@ DocumentLoader の単体テスト。
 レジストリとフォールバックチェーンの動作を検証。
 """
 
-from pathlib import Path
-from unittest.mock import MagicMock, patch
-
 import pytest
 
 from app.services.base_parser import BaseParser, ParseError
 from app.services.document_loader import DocumentLoader
-from app.services.parse_result import ChunkMeta, ContentType, ParseResult
+from app.services.parse_result import ParseResult
 
 
 @pytest.fixture

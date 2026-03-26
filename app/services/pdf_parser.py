@@ -61,7 +61,7 @@ class PDFMarkdownParser(BaseParser):
                             f"{ParserWarning.SCAN_PAGE_DETECTED.value}: Page {page_num}"
                         )
                         markdown_sections.append(
-                            f"_(スキャンページの可能性があります。OCR処理が必要です)_\n"
+                            "_(スキャンページの可能性があります。OCR処理が必要です)_\n"
                         )
                         continue
 

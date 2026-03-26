@@ -1,5 +1,4 @@
 import json
-import pytest
 import asyncio
 from fastapi import Request
 from fastapi.responses import JSONResponse

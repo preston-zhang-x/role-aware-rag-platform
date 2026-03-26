@@ -1,7 +1,7 @@
 """create documents table
 
 Revision ID: dcb8a70aceec
-Revises: 
+Revises:
 Create Date: 2026-02-28 19:09:39.063242
 
 """
