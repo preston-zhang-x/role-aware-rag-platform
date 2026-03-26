@@ -1,11 +1,10 @@
-
-
 from datetime import datetime
 
 from sqlalchemy import DateTime, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
+
 
 # Document model representing a document in the database
 class Document(Base):

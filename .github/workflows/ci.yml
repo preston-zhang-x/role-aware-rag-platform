@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-24.04
+    env:
+      SECRET_KEY: ${{ secrets.SECRET_KEY || 'ci-secret-key' }}
+      OPENAI_BASE_URL: https://api.openai.com/v1
+      EMBEDDING_MODEL: text-embedding-3-small
+      EMBEDDING_DIMENSIONS: "1536"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - name: Sync dependencies
+        run: uv sync --locked --extra dev
+      - name: Check format (black)
+        run: uv run --no-sync black --check --diff .
+      - name: Lint (flake8)
+        run: uv run --no-sync flake8 --max-line-length=120 --extend-ignore=E203,W503 .
+      - name: Run tests
+        run: uv run --no-sync pytest -v --tb=short

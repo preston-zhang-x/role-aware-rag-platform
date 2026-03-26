@@ -108,9 +108,7 @@ class TestExtractTextBranches:
     ) -> None:
         """_node_content が JSON 文字列で dict にパースされる。"""
         service, _ = _build_service(mock_openai_client)
-        text = service._extract_text(
-            {"_node_content": '{"text": "parsed from json"}'}
-        )
+        text = service._extract_text({"_node_content": '{"text": "parsed from json"}'})
         assert text == "parsed from json"
 
     def test_node_content_is_json_string_parsed_to_non_dict(
@@ -205,9 +203,7 @@ class TestRagResultDefaults:
 
 
 class TestServiceInitValidation:
-    def test_top_k_zero_raises_value_error(
-        self, mock_openai_client: MagicMock
-    ) -> None:
+    def test_top_k_zero_raises_value_error(self, mock_openai_client: MagicMock) -> None:
         with pytest.raises(ValueError, match="top_k must be greater than 0"):
             RagService(
                 qdrant_wrapper=MagicMock(),
@@ -248,9 +244,7 @@ class TestSearchLimitNone:
         call_kwargs = wrapper.client.query_points.call_args.kwargs
         assert call_kwargs["limit"] == 3
 
-    def test_search_uses_explicit_limit(
-        self, mock_openai_client: MagicMock
-    ) -> None:
+    def test_search_uses_explicit_limit(self, mock_openai_client: MagicMock) -> None:
         service, wrapper = _build_service(mock_openai_client, top_k=3)
         wrapper.client.query_points.return_value = FakeQueryResult(points=[])
 
@@ -276,9 +270,7 @@ class TestCandidateTopK:
         service, _ = _build_service(mock_openai_client, top_k=10)
         assert service.candidate_top_k == 40  # 10 * 4
 
-    def test_candidate_top_k_boundary(
-        self, mock_openai_client: MagicMock
-    ) -> None:
+    def test_candidate_top_k_boundary(self, mock_openai_client: MagicMock) -> None:
         service, _ = _build_service(mock_openai_client, top_k=5)
         # max(20, 5*4=20) == 20
         assert service.candidate_top_k == DEFAULT_CANDIDATE_TOP_K
@@ -288,9 +280,7 @@ class TestCandidateTopK:
 
 
 class TestPointToSourceChunk:
-    def test_point_with_none_payload(
-        self, mock_openai_client: MagicMock
-    ) -> None:
+    def test_point_with_none_payload(self, mock_openai_client: MagicMock) -> None:
         service, _ = _build_service(mock_openai_client)
         point = MagicMock()
         point.payload = None
@@ -307,9 +297,7 @@ class TestPointToSourceChunk:
 
 
 class TestAskWithMetadata:
-    def test_ask_populates_metadata_fields(
-        self, mock_openai_client: MagicMock
-    ) -> None:
+    def test_ask_populates_metadata_fields(self, mock_openai_client: MagicMock) -> None:
         """ask() がメタデータ付きの RagResult を返すことを検証。"""
         service, wrapper = _build_service(mock_openai_client)
         wrapper.client.query_points.return_value = FakeQueryResult(
@@ -367,9 +355,7 @@ class TestRerankEdgeCases:
         service.openai_client = mock_openai_client
         return service
 
-    def test_empty_sources_returns_empty(
-        self, mock_openai_client: MagicMock
-    ) -> None:
+    def test_empty_sources_returns_empty(self, mock_openai_client: MagicMock) -> None:
         """ソースが空 → 空リストを返す。"""
         reranker = MagicMock()
         service = self._make_rerank_service(mock_openai_client, reranker, top_k=2)
@@ -399,9 +385,7 @@ class TestRerankEdgeCases:
         assert len(result) == 1
         assert result[0].text == "a"
 
-    def test_rerank_with_duplicate_indexes(
-        self, mock_openai_client: MagicMock
-    ) -> None:
+    def test_rerank_with_duplicate_indexes(self, mock_openai_client: MagicMock) -> None:
         """リランカーが重複インデックスを返す → 重複排除。"""
         reranker = MagicMock()
         reranker.rerank.return_value = [
@@ -468,9 +452,7 @@ class TestRerankEdgeCases:
 class TestFilterByScore:
     """_filter_by_score の全ブランチをカバーする。"""
 
-    def test_threshold_zero_returns_all(
-        self, mock_openai_client: MagicMock
-    ) -> None:
+    def test_threshold_zero_returns_all(self, mock_openai_client: MagicMock) -> None:
         """閾値が 0 → フィルタ無効、全件返す。"""
         service, _ = _build_service(mock_openai_client)
         service.score_threshold = 0.0
@@ -481,9 +463,7 @@ class TestFilterByScore:
         result = service._filter_by_score(sources)
         assert len(result) == 2
 
-    def test_threshold_filters_low_scores(
-        self, mock_openai_client: MagicMock
-    ) -> None:
+    def test_threshold_filters_low_scores(self, mock_openai_client: MagicMock) -> None:
         """閾値 0.5 → 低スコアが除外される。"""
         service, _ = _build_service(mock_openai_client)
         service.score_threshold = 0.5
@@ -497,9 +477,7 @@ class TestFilterByScore:
         assert result[0].text == "mid"
         assert result[1].text == "high"
 
-    def test_threshold_filters_all(
-        self, mock_openai_client: MagicMock
-    ) -> None:
+    def test_threshold_filters_all(self, mock_openai_client: MagicMock) -> None:
         """全チャンクが閾値未満 → 空リスト。"""
         service, _ = _build_service(mock_openai_client)
         service.score_threshold = 0.9

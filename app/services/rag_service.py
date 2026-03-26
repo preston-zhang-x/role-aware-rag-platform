@@ -23,7 +23,9 @@ from app.services.reranker_service import (
 )
 
 logger = logging.getLogger(__name__)
-FALLBACK_ANSWER = "現在サービスが混雑しています。しばらくしてからもう一度お試しください。"
+FALLBACK_ANSWER = (
+    "現在サービスが混雑しています。しばらくしてからもう一度お試しください。"
+)
 LLM_TIMEOUT_SECONDS = 30.0
 DEFAULT_COLLECTION = "documents"
 DEFAULT_TOP_K = 5
@@ -117,7 +119,9 @@ class RagService:
                 sources=[],
             )
         # 4. Prompt を組み立てて LLM に投げる（Generation）
-        answer, latency_ms, prompt_tokens, completion_tokens, total_tokens = self._generate(question, sources)
+        answer, latency_ms, prompt_tokens, completion_tokens, total_tokens = (
+            self._generate(question, sources)
+        )
         return RagResult(
             answer=answer,
             sources=sources,
@@ -165,9 +169,7 @@ class RagService:
         if self.retrieval_mode == "hybrid":
             return self._filter_by_score(hybrid_sources[: self.top_k])
 
-        return self._filter_by_score(
-            self._rerank_sources(question, hybrid_sources)
-        )
+        return self._filter_by_score(self._rerank_sources(question, hybrid_sources))
 
     @property
     def candidate_top_k(self) -> int:
@@ -361,7 +363,9 @@ class RagService:
 
         return str(node_content)
 
-    def _generate(self, question: str, sources: list[SourceChunk]) -> tuple[str, float, int, int, int]:
+    def _generate(
+        self, question: str, sources: list[SourceChunk]
+    ) -> tuple[str, float, int, int, int]:
         """
         検索で得たチャンクを元に LLM で回答を生成する。
         Returns: (answer, latency_ms, prompt_tokens, completion_tokens, total_tokens)
@@ -380,9 +384,9 @@ class RagService:
             f"質問: {question}"
         )
 
-# LLM に投げる（Chat Completion API）— タイムアウト＆エラーハンドリング付き
+        # LLM に投げる（Chat Completion API）— タイムアウト＆エラーハンドリング付き
         try:
-            start = time.time() # タイムアウト計測開始
+            start = time.time()  # タイムアウト計測開始
             response = self.openai_client.chat.completions.create(
                 model=self.openai_settings.chat_model,
                 messages=[

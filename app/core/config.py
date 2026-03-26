@@ -49,6 +49,7 @@ class RetrievalSettings(BaseSettings):
     rerank_model: str | None = None
     rerank_timeout_seconds: float = Field(default=8.0, gt=0)
 
+
 @lru_cache(maxsize=1)
 def get_security_settings() -> SecuritySettings:
     return SecuritySettings()

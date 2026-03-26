@@ -78,6 +78,7 @@ class QdrantClientWrapper:
         # Qdrant サーバーへの接続を確認する
         self.client.get_collections()
 
+
 @lru_cache(maxsize=1)
 def get_qdrant_settings() -> QdrantSettings:
     return QdrantSettings()

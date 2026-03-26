@@ -90,9 +90,13 @@ class CohereCompatibleRerankerClient:
                 timeout=self.timeout_seconds,
             )
         except httpx.TimeoutException as exc:
-            raise RerankerTransientError("リランカーへのリクエストがタイムアウトしました。") from exc
+            raise RerankerTransientError(
+                "リランカーへのリクエストがタイムアウトしました。"
+            ) from exc
         except httpx.RequestError as exc:
-            raise RerankerTransientError("リランカーへのリクエストに失敗しました。") from exc
+            raise RerankerTransientError(
+                "リランカーへのリクエストに失敗しました。"
+            ) from exc
 
         if response.status_code == 429 or response.status_code >= 500:
             raise RerankerTransientError(
@@ -144,11 +148,15 @@ class CohereCompatibleRerankerClient:
     def _parse_results(self, payload: Any) -> list[RerankResult]:
         """API レスポンスを解析して結果のリストを返す。"""
         if not isinstance(payload, dict):
-            raise ValueError("リランカーのレスポンスは JSON オブジェクトである必要があります。")
+            raise ValueError(
+                "リランカーのレスポンスは JSON オブジェクトである必要があります。"
+            )
 
         raw_results = payload.get("results")
         if not isinstance(raw_results, list):
-            raise ValueError("リランカーのレスポンスに結果リスト（results）が含まれていません。")
+            raise ValueError(
+                "リランカーのレスポンスに結果リスト（results）が含まれていません。"
+            )
 
         results: list[RerankResult] = []
         for item in raw_results:
@@ -162,7 +170,9 @@ class CohereCompatibleRerankerClient:
             results.append(
                 RerankResult(
                     index=index,
-                    relevance_score=float(score) if isinstance(score, (int, float)) else None,
+                    relevance_score=(
+                        float(score) if isinstance(score, (int, float)) else None
+                    ),
                 )
             )
 

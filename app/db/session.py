@@ -23,6 +23,7 @@ class DBSettings(BaseSettings):
             raise ValueError("DATABASE_URL is required. Set it in .env")
         return self.database_url
 
+
 @lru_cache(maxsize=1)
 def get_db_settings() -> DBSettings:
     return DBSettings()
