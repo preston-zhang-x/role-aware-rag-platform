@@ -11,10 +11,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.services.bm25_service import BM25Hit
 from app.services.rag_service import (
     DEFAULT_CANDIDATE_TOP_K,
-    FALLBACK_ANSWER,
     RagResult,
     RagService,
     SourceChunk,
