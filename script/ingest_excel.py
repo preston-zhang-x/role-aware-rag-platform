@@ -19,7 +19,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.services.document_loader import DocumentLoader
 
 
+def _configure_stdout() -> None:
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if callable(reconfigure):
+        reconfigure(encoding="utf-8", errors="replace")
+
+
 def main():
+    _configure_stdout()
     # ── 引数チェック ──
     if len(sys.argv) < 2:
         print("使い方: python script/ingest_excel.py <ファイルパス>")
