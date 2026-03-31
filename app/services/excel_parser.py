@@ -112,7 +112,7 @@ class JapaneseExcelParser(BaseParser):
 
         all_chunks: list[ChunkMeta] = []
         all_warnings: list[str] = []
-        markdown_sections: list[str] = []
+        full_text = ""
 
         # ── 公式の二重読み取り战略 ──
         # data_only=True:  キャッシュされた計算結果を読む（ユーザーに見える値）
@@ -137,7 +137,7 @@ class JapaneseExcelParser(BaseParser):
                     continue
 
                 # ── 戦略1: Sheet名を Markdown 一級見出しとして注入 ──
-                markdown_sections.append(f"# {sheet_name}")
+                full_text, _ = self._append_section(full_text, f"# {sheet_name}")
 
                 grid, broadcast_cells, merge_spans = self._build_grid_with_merged_cells(
                     ws_cached,
@@ -145,7 +145,7 @@ class JapaneseExcelParser(BaseParser):
                     all_warnings,
                 )
                 if not grid:
-                    markdown_sections.append("_(空のシート)_")
+                    full_text, _ = self._append_section(full_text, "_(空のシート)_")
                     continue
 
                 section_md, section_chunks = self._heuristic_scan(
@@ -156,22 +156,38 @@ class JapaneseExcelParser(BaseParser):
                     merge_spans,
                 )
                 if section_md:
-                    markdown_sections.append(section_md)
+                    full_text, section_start = self._append_section(full_text, section_md)
+                    if section_start is not None:
+                        for chunk in section_chunks:
+                            chunk.char_start += section_start
+                            chunk.char_end += section_start
                 all_chunks.extend(section_chunks)
 
                 # ── TextBox / コメントの抽出 ──
                 shapes_md = self._extract_shapes_and_comments(ws_cached)
                 if shapes_md:
-                    markdown_sections.append(shapes_md)
+                    full_text, _ = self._append_section(full_text, shapes_md)
 
         finally:
             wb_cached.close()
             wb_formula.close()
 
-        text = "\n\n".join(
-            section.strip() for section in markdown_sections if section.strip()
-        )
-        return ParseResult(text=text + "\n", chunks=all_chunks, warnings=all_warnings)
+        text = full_text + "\n" if full_text else ""
+        return ParseResult(text=text, chunks=all_chunks, warnings=all_warnings)
+
+    def _append_section(
+        self,
+        full_text: str,
+        section: str,
+    ) -> tuple[str, int | None]:
+        """最終Markdownへセクションを追加し、その開始位置を返す。"""
+        normalized = section.strip()
+        if not normalized:
+            return full_text, None
+
+        separator = "\n\n" if full_text else ""
+        start = len(full_text) + len(separator)
+        return f"{full_text}{separator}{normalized}", start
 
     # ═══════════════════════════════════════════════
     # 戦略2: 結合セル解構と広播
@@ -346,7 +362,22 @@ class JapaneseExcelParser(BaseParser):
             last_text_block = None
             index += 1
 
-        return "\n\n".join(markdown_parts), chunks
+        return self._with_chunk_positions(markdown_parts, chunks), chunks
+
+    def _with_chunk_positions(
+        self,
+        markdown_parts: list[str],
+        chunks: list[ChunkMeta],
+    ) -> str:
+        """セクション内の各チャンクに相対的な文字位置を付与する。"""
+        section_text = ""
+        for markdown, chunk in zip(markdown_parts, chunks, strict=False):
+            if section_text:
+                section_text += "\n\n"
+            chunk.char_start = len(section_text)
+            section_text += markdown
+            chunk.char_end = len(section_text)
+        return section_text
 
     def _build_row_profile(
         self,
