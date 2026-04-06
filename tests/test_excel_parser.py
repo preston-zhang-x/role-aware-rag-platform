@@ -79,6 +79,19 @@ def merged_cell_excel(tmp_path) -> Path:
 
 
 @pytest.fixture
+def empty_excel(tmp_path) -> Path:
+    """可視シートが空の Excel ファイル。"""
+    file_path = tmp_path / "empty.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    assert ws is not None
+    ws.title = "空シート"
+    wb.save(file_path)
+    wb.close()
+    return file_path
+
+
+@pytest.fixture
 def kv_and_table_excel(tmp_path) -> Path:
     """
     典型的な日式仕様書: 上部にKV（疎）、下部にテーブル（密）。
@@ -645,3 +658,20 @@ class TestErrorHandling:
             assert chunk.source_file == str(simple_excel)
             assert chunk.sheet_name == "基本設計"
             assert chunk.content_type is not None
+
+    def test_chunks_have_char_positions(self, parser, simple_excel):
+        """チャンクの文字位置が連結テキストに対して設定されること"""
+        result = parser.parse(str(simple_excel))
+
+        assert result.chunks
+        for chunk in result.chunks:
+            assert chunk.char_end > chunk.char_start >= 0
+            extracted = result.text[chunk.char_start : chunk.char_end]
+            assert extracted.strip()
+
+    def test_empty_sheet_is_rendered_without_error(self, parser, empty_excel):
+        """空シートでも例外なく見出しを返すこと"""
+        result = parser.parse(str(empty_excel))
+
+        assert "# 空シート" in result.text
+        assert result.chunks == []
