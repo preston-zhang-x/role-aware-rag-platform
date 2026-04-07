@@ -26,6 +26,9 @@ class SourceOut(BaseModel):
     source_file: str
     score: float
     chunk_index: int
+    sheet_name: str | None = None
+    cell_range: str | None = None
+    content_type: str | None = None
 
 
 class MetadataOut(BaseModel):
@@ -68,6 +71,9 @@ def ask(request: AskRequest, current_user: User = Depends(get_current_active_use
                     source_file=src.source_file,
                     score=src.score,
                     chunk_index=src.chunk_index,
+                    sheet_name=src.payload.get("sheet_name"),
+                    cell_range=src.payload.get("cell_range"),
+                    content_type=src.payload.get("content_type"),
                 )
                 for src in result.sources
             ],

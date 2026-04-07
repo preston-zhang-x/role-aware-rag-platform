@@ -79,6 +79,19 @@ def merged_cell_excel(tmp_path) -> Path:
 
 
 @pytest.fixture
+def empty_excel(tmp_path) -> Path:
+    """可視シートが空の Excel ファイル。"""
+    file_path = tmp_path / "empty.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    assert ws is not None
+    ws.title = "空シート"
+    wb.save(file_path)
+    wb.close()
+    return file_path
+
+
+@pytest.fixture
 def kv_and_table_excel(tmp_path) -> Path:
     """
     典型的な日式仕様書: 上部にKV（疎）、下部にテーブル（密）。
@@ -257,6 +270,184 @@ def wide_sheet_table_excel(tmp_path) -> Path:
     return file_path
 
 
+@pytest.fixture
+def merged_width_definition_table_excel(tmp_path) -> Path:
+    """結合幅が広い 5 列定義表でも表として扱いたい Excel"""
+    file_path = tmp_path / "merged_width_definition_table.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    assert ws is not None
+    ws.title = "IO関連"
+
+    ws["A1"] = "パラメータ一覧"
+    ws["A2"] = "No"
+    ws["B2"] = "論理名称"
+    ws["L2"] = "物理名称"
+    ws["V2"] = "I/O"
+    ws["X2"] = "備考"
+    ws["A3"] = "1"
+    ws["B3"] = "collection_name"
+    ws["L3"] = "collection_name"
+    ws["V3"] = "I"
+    ws["X3"] = "Qdrant の参照先コレクション。"
+    ws["A4"] = "2"
+    ws["B4"] = "top_k"
+    ws["L4"] = "top_k"
+    ws["V4"] = "I"
+    ws["X4"] = "検索上限件数。"
+
+    ws.merge_cells("B2:K2")
+    ws.merge_cells("L2:U2")
+    ws.merge_cells("V2:W2")
+    ws.merge_cells("X2:AZ2")
+    ws.merge_cells("B3:K3")
+    ws.merge_cells("L3:U3")
+    ws.merge_cells("V3:W3")
+    ws.merge_cells("X3:AZ3")
+    ws.merge_cells("B4:K4")
+    ws.merge_cells("L4:U4")
+    ws.merge_cells("V4:W4")
+    ws.merge_cells("X4:AZ4")
+
+    wb.save(file_path)
+    wb.close()
+    return file_path
+
+
+@pytest.fixture
+def merged_width_item_definition_excel(tmp_path) -> Path:
+    """結合幅が広い 9 列定義表でも表として扱いたい Excel"""
+    file_path = tmp_path / "merged_width_item_definition.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    assert ws is not None
+    ws.title = "画面項目"
+
+    ws["A1"] = "I/O項目定義"
+    headers = {
+        "A2": "No",
+        "B2": "項目名称",
+        "L2": "分類",
+        "Q2": "必須",
+        "S2": "桁数",
+        "U2": "フォーマット",
+        "AB2": "テーブル",
+        "AJ2": "フィールド",
+        "AR2": "備考",
+    }
+    for cell, value in headers.items():
+        ws[cell] = value
+
+    row1 = {
+        "A3": "1",
+        "B3": "コレクション名",
+        "L3": "入力",
+        "Q3": "○",
+        "S3": "-",
+        "U3": "str",
+        "AB3": "BM25Service",
+        "AJ3": "collection_name",
+        "AR3": "既定値は documents。",
+    }
+    row2 = {
+        "A4": "2",
+        "B4": "取得件数上限",
+        "L4": "入力",
+        "Q4": "任意",
+        "S4": "-",
+        "U4": "int",
+        "AB4": "BM25Service",
+        "AJ4": "top_k",
+        "AR4": "既定値は 5。",
+    }
+    for mapping in (row1, row2):
+        for cell, value in mapping.items():
+            ws[cell] = value
+
+    for row in (2, 3, 4):
+        ws.merge_cells(f"B{row}:K{row}")
+        ws.merge_cells(f"L{row}:P{row}")
+        ws.merge_cells(f"Q{row}:R{row}")
+        ws.merge_cells(f"S{row}:T{row}")
+        ws.merge_cells(f"U{row}:AA{row}")
+        ws.merge_cells(f"AB{row}:AI{row}")
+        ws.merge_cells(f"AJ{row}:AQ{row}")
+        ws.merge_cells(f"AR{row}:BC{row}")
+
+    wb.save(file_path)
+    wb.close()
+    return file_path
+
+
+@pytest.fixture
+def merged_width_kv_excel(tmp_path) -> Path:
+    """merge 幅が広くても実態が KV 行なら表にしない Excel"""
+    file_path = tmp_path / "merged_width_kv.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    assert ws is not None
+    ws.title = "メタ情報"
+
+    ws["A1"] = "プロジェクト名"
+    ws["B1"] = "RAG Platform"
+    ws["L1"] = "管理番号"
+    ws["M1"] = "PRJ-001"
+    ws["A2"] = "作成者"
+    ws["B2"] = "田中太郎"
+    ws["L2"] = "版数"
+    ws["M2"] = "1.0"
+
+    ws.merge_cells("B1:K1")
+    ws.merge_cells("M1:V1")
+    ws.merge_cells("B2:K2")
+    ws.merge_cells("M2:V2")
+
+    wb.save(file_path)
+    wb.close()
+    return file_path
+
+
+@pytest.fixture
+def merged_width_table_with_followup_section_excel(tmp_path) -> Path:
+    """表の直後に別セクションが来ても飲み込まない Excel"""
+    file_path = tmp_path / "merged_width_table_with_followup.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    assert ws is not None
+    ws.title = "IO関連"
+
+    ws["A1"] = "パラメータ一覧"
+    ws["A2"] = "No"
+    ws["B2"] = "論理名称"
+    ws["L2"] = "物理名称"
+    ws["V2"] = "I/O"
+    ws["X2"] = "備考"
+    ws["A3"] = "1"
+    ws["B3"] = "collection_name"
+    ws["L3"] = "collection_name"
+    ws["V3"] = "I"
+    ws["X3"] = "Qdrant の参照先コレクション。"
+    ws["A4"] = "2"
+    ws["B4"] = "top_k"
+    ws["L4"] = "top_k"
+    ws["V4"] = "I"
+    ws["X4"] = "検索上限件数。"
+    ws["A5"] = "補足事項"
+    ws.merge_cells("A5:AZ5")
+    ws["A6"] = "備考"
+    ws["B6"] = "search 既定値は 5"
+
+    for row in (2, 3, 4):
+        ws.merge_cells(f"B{row}:K{row}")
+        ws.merge_cells(f"L{row}:U{row}")
+        ws.merge_cells(f"V{row}:W{row}")
+        ws.merge_cells(f"X{row}:AZ{row}")
+
+    wb.save(file_path)
+    wb.close()
+    return file_path
+
+
 # ═══════════════════════════════════════
 # can_handle テスト
 # ═══════════════════════════════════════
@@ -383,6 +574,49 @@ class TestHeuristicScan:
         assert "| ID | 名前 | 部署 |" in result.text
         assert "| ID | 名前 | 部署 |  |" not in result.text
 
+    def test_merged_width_definition_table_kept_as_table(
+        self, parser, merged_width_definition_table_excel
+    ):
+        """結合幅が広い 5 列定義表は KV ではなく表として保持すること"""
+        result = parser.parse(str(merged_width_definition_table_excel))
+        assert "| No | 論理名称 | 物理名称 | I/O | 備考 |" in result.text
+        assert (
+            "| 1 | collection_name | collection_name | I | Qdrant の参照先コレクション。 |"
+            in result.text
+        )
+        assert "- **1:** collection_name" not in result.text
+
+    def test_merged_width_item_definition_kept_as_table(
+        self, parser, merged_width_item_definition_excel
+    ):
+        """結合幅が広い 9 列定義表も表構造を維持すること"""
+        result = parser.parse(str(merged_width_item_definition_excel))
+        assert (
+            "| No | 項目名称 | 分類 | 必須 | 桁数 | フォーマット | テーブル | フィールド | 備考 |"
+            in result.text
+        )
+        assert (
+            "| 1 | コレクション名 | 入力 | ○ | - | str | BM25Service | collection_name | 既定値は documents。 |"
+            in result.text
+        )
+        assert "- **分類:** 必須" not in result.text
+
+    def test_merged_width_kv_stays_kv(self, parser, merged_width_kv_excel):
+        """wide merge の KV 行は表に誤分類しないこと"""
+        result = parser.parse(str(merged_width_kv_excel))
+        assert "- **プロジェクト名:** RAG Platform" in result.text
+        assert "- **管理番号:** PRJ-001" in result.text
+        assert "| プロジェクト名 |" not in result.text
+
+    def test_followup_section_not_swallowed_after_merged_table(
+        self, parser, merged_width_table_with_followup_section_excel
+    ):
+        """merged-width table の直後に来る別セクションを表に飲み込まないこと"""
+        result = parser.parse(str(merged_width_table_with_followup_section_excel))
+        assert "| No | 論理名称 | 物理名称 | I/O | 備考 |" in result.text
+        assert "## 補足事項" in result.text
+        assert "- **備考:** search 既定値は 5" in result.text
+
 
 # ═══════════════════════════════════════
 # 特殊文字エスケープテスト
@@ -424,3 +658,20 @@ class TestErrorHandling:
             assert chunk.source_file == str(simple_excel)
             assert chunk.sheet_name == "基本設計"
             assert chunk.content_type is not None
+
+    def test_chunks_have_char_positions(self, parser, simple_excel):
+        """チャンクの文字位置が連結テキストに対して設定されること"""
+        result = parser.parse(str(simple_excel))
+
+        assert result.chunks
+        for chunk in result.chunks:
+            assert chunk.char_end > chunk.char_start >= 0
+            extracted = result.text[chunk.char_start : chunk.char_end]
+            assert extracted.strip()
+
+    def test_empty_sheet_is_rendered_without_error(self, parser, empty_excel):
+        """空シートでも例外なく見出しを返すこと"""
+        result = parser.parse(str(empty_excel))
+
+        assert "# 空シート" in result.text
+        assert result.chunks == []

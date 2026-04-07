@@ -37,7 +37,7 @@ SYSTEM_PROMPT = (
     "あなたは社内ドキュメントに基づいて質問に答えるアシスタントです。\n"
     "以下の「参考情報」だけを使って回答してください。\n"
     "参考情報に答えがない場合は「ドキュメントに該当する情報が見つかりませんでした」と答えてください。\n"
-    "回答には必ず出典（どのドキュメントの情報か）を明記してください。"
+    "回答には必ず出典を明記してください。出典は参考情報に記載されている形式（ファイル名 > シート名 [セル範囲]）をそのまま使用してください。"
 )
 
 
@@ -374,7 +374,12 @@ class RagService:
         # 検索結果を「参考情報」テキストに組み立てる
         context_parts: list[str] = []
         for i, src in enumerate(sources, start=1):
-            context_parts.append(f"【参考{i}】（出典: {src.source_file}）\n{src.text}")
+            location = src.source_file
+            if src.payload.get("sheet_name"):
+                location += f" > {src.payload['sheet_name']}"
+            if src.payload.get("cell_range"):
+                location += f" [{src.payload['cell_range']}]"
+            context_parts.append(f"【参考{i}】（出典: {location}）\n{src.text}")
         context_text = "\n---\n".join(context_parts)
 
         # ユーザーメッセージを組み立てる

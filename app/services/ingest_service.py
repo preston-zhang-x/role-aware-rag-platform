@@ -126,7 +126,7 @@ class IngestService:
             self._delete_existing_points(file_path)
 
             # 解析結果からテキストを取り出し、ノードを構築する。
-            nodes = self._build_nodes(file_path, parse_result.text, allowed_roles)
+            nodes = self._build_nodes(file_path, parse_result, allowed_roles)
             if not nodes:
                 warnings = self._summarize_warnings(
                     parse_result.warnings
@@ -224,15 +224,28 @@ class IngestService:
     def _build_nodes(
         self,
         file_path: str,
-        text: str,
+        parse_result,
         allowed_roles: list[str],
     ) -> list[TextNode]:
         # テキストを分割してノードに変換する。安定した source_key を付与する。
         source_key = self._build_source_key(file_path)
-        document = Document(text=text, id_=source_key)
+        document = Document(text=parse_result.text, id_=source_key)
         nodes = self.splitter.split_document(document)
 
+        # チャンク位置からメタデータへのマップを構築
+        chunk_position_map = []
+        for chunk_meta in parse_result.chunks:
+            if chunk_meta.sheet_name or chunk_meta.cell_range:
+                chunk_position_map.append({
+                    "start": chunk_meta.char_start,
+                    "end": chunk_meta.char_end,
+                    "sheet_name": chunk_meta.sheet_name,
+                    "cell_range": chunk_meta.cell_range,
+                    "content_type": chunk_meta.content_type.value if chunk_meta.content_type else None,
+                })
+
         # 各ノードに安定 ID と検索用 metadata を付与する。
+        search_start = 0
         for chunk_index, node in enumerate(nodes):
             chunk_text = node.text.strip()
             metadata = self._build_metadata(
@@ -242,12 +255,51 @@ class IngestService:
                 chunk_index=chunk_index,
                 allowed_roles=allowed_roles,
             )
+
+            # ノードのテキストが元のテキストのどこにあるかを検索
+            node_start = parse_result.text.find(chunk_text, search_start)
+            if node_start < 0:
+                node_start = parse_result.text.find(chunk_text)
+            if node_start >= 0:
+                node_end = node_start + len(chunk_text)
+                search_start = node_end
+
+                best_chunk_info = self._select_best_overlapping_chunk(
+                    node_start,
+                    node_end,
+                    chunk_position_map,
+                )
+                if best_chunk_info is not None:
+                    for key in ["sheet_name", "cell_range", "content_type"]:
+                        if best_chunk_info.get(key):
+                            metadata[key] = best_chunk_info[key]
+
             node.id_ = self._build_point_id(file_path, chunk_index)
             node.text = chunk_text
             node.metadata = metadata
             node.excluded_embed_metadata_keys = list(metadata.keys())
 
         return nodes
+
+    def _select_best_overlapping_chunk(
+        self,
+        node_start: int,
+        node_end: int,
+        chunk_position_map: list[dict[str, str | int | None]],
+    ) -> dict[str, str | int | None] | None:
+        """重なる parser chunk の中から最も代表性の高いものを選ぶ。"""
+        best_chunk_info: dict[str, str | int | None] | None = None
+        best_overlap = 0
+        for chunk_info in chunk_position_map:
+            start = int(chunk_info["start"])
+            end = int(chunk_info["end"])
+            overlap = min(node_end, end) - max(node_start, start)
+            if overlap <= 0:
+                continue
+            if overlap > best_overlap:
+                best_chunk_info = chunk_info
+                best_overlap = overlap
+        return best_chunk_info
 
     def _delete_existing_points(self, file_path: str) -> None:
         # 再取り込み時は同じファイル由来の古いデータを先に消す。
