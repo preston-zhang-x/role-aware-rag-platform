@@ -41,6 +41,8 @@ class ChunkMeta:
     cell_range: str | None = None  # 例: "A1:F20"
     merged_ranges: list[str] = field(default_factory=list)
     is_broadcast_fill: bool = False  # 広播填充フラグ（token膨張を識別）
+    char_start: int = 0  # 連結テキスト内の開始位置
+    char_end: int = 0  # 連結テキスト内の終了位置
 
 
 @dataclass

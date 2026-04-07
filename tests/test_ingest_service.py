@@ -12,16 +12,26 @@ from llama_index.core.schema import TextNode
 import app.services.ingest_service as ingest_service_module
 from app.services.document_loader import DocumentLoader
 from app.services.ingest_service import IngestService, SimpleMarkdownSplitter
-from app.services.parse_result import ParseResult
+from app.services.parse_result import ChunkMeta, ContentType, ParseResult
 
 
 class FakeLoader(DocumentLoader):
-    def __init__(self, text: str, warnings: Sequence[str] | None = None) -> None:
+    def __init__(
+        self,
+        text: str,
+        warnings: Sequence[str] | None = None,
+        chunks: Sequence[ChunkMeta] | None = None,
+    ) -> None:
         self.text = text
         self.warnings = list(warnings or ["parser warning"])
+        self.chunks = list(chunks or [])
 
     def load(self, file_path: str) -> ParseResult:
-        return ParseResult(text=self.text, warnings=list(self.warnings))
+        return ParseResult(
+            text=self.text,
+            chunks=list(self.chunks),
+            warnings=list(self.warnings),
+        )
 
 
 class FakeSplitter(SimpleMarkdownSplitter):
@@ -374,6 +384,100 @@ class TestIngestWithLlamaIndex:
         assert metadata is not None
         assert "formula_description" in metadata
         assert "SUM" in metadata["formula_description"]
+
+    def test_ingest_preserves_excel_chunk_metadata(
+        self,
+        monkeypatch: MonkeyPatch,
+        fake_qdrant_wrapper: FakeQdrantWrapper,
+        fake_vector_store: FakeVectorStore,
+    ) -> None:
+        chunk_text = "| ID | 名前 |\n| --- | --- |\n| 001 | 田中太郎 |"
+        full_text = f"# 基本設計\n\n{chunk_text}\n"
+        chunk_start = full_text.find(chunk_text)
+        chunk_end = chunk_start + len(chunk_text)
+        ingest_service = build_service(
+            monkeypatch,
+            loader=FakeLoader(
+                full_text,
+                chunks=[
+                    ChunkMeta(
+                        source_file="data/fixtures/japanese_spec.xlsx",
+                        content_type=ContentType.TABLE,
+                        sheet_name="基本設計",
+                        cell_range="A1:B3",
+                        char_start=chunk_start,
+                        char_end=chunk_end,
+                    )
+                ],
+            ),
+            splitter=FakeSplitter([chunk_text]),
+            qdrant_wrapper=fake_qdrant_wrapper,
+            vector_store=fake_vector_store,
+        )
+
+        ingest_service.ingest(
+            file_path="data/fixtures/japanese_spec.xlsx",
+            allowed_roles=["admin"],
+        )
+
+        metadata = fake_vector_store.add_calls[0].nodes[0].metadata
+        assert metadata is not None
+        assert metadata["sheet_name"] == "基本設計"
+        assert metadata["cell_range"] == "A1:B3"
+        assert metadata["content_type"] == "table"
+
+    def test_ingest_prefers_most_overlapping_chunk_metadata(
+        self,
+        monkeypatch: MonkeyPatch,
+        fake_qdrant_wrapper: FakeQdrantWrapper,
+        fake_vector_store: FakeVectorStore,
+    ) -> None:
+        prefix = "- **起動サイクル:** 1.日次\n\n"
+        table_text = (
+            "| No | オブジェクト名 | コメント |\n"
+            "| --- | --- | --- |\n"
+            "| 3 | JapaneseExcelParser | 方眼紙レイアウトを merge-aware に整形する Excel パーサー。 |"
+        )
+        suffix = "\n\n## 6.異常終了時処理"
+        full_text = prefix + table_text + suffix
+        ingest_service = build_service(
+            monkeypatch,
+            loader=FakeLoader(
+                full_text,
+                chunks=[
+                    ChunkMeta(
+                        source_file="data/fixtures/japanese_spec.xlsx",
+                        content_type=ContentType.KEY_VALUE,
+                        sheet_name="処理概要",
+                        cell_range="row 21",
+                        char_start=0,
+                        char_end=len(prefix),
+                    ),
+                    ChunkMeta(
+                        source_file="data/fixtures/japanese_spec.xlsx",
+                        content_type=ContentType.TABLE,
+                        sheet_name="処理概要",
+                        cell_range="B27:AC31",
+                        char_start=len(prefix),
+                        char_end=len(prefix) + len(table_text),
+                    ),
+                ],
+            ),
+            splitter=FakeSplitter([full_text.strip()]),
+            qdrant_wrapper=fake_qdrant_wrapper,
+            vector_store=fake_vector_store,
+        )
+
+        ingest_service.ingest(
+            file_path="data/fixtures/japanese_spec.xlsx",
+            allowed_roles=["admin"],
+        )
+
+        metadata = fake_vector_store.add_calls[0].nodes[0].metadata
+        assert metadata is not None
+        assert metadata["sheet_name"] == "処理概要"
+        assert metadata["cell_range"] == "B27:AC31"
+        assert metadata["content_type"] == "table"
 
     def test_ingest_returns_skip_warning_for_empty_text(
         self,

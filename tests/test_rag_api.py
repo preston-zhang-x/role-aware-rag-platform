@@ -61,6 +61,11 @@ class TestRagAskEndpoint:
                     source_file="doc.pdf",
                     score=0.95,
                     chunk_index=0,
+                    payload={
+                        "sheet_name": "基本設計",
+                        "cell_range": "A1:B3",
+                        "content_type": "table",
+                    },
                 ),
             ],
             latency_ms=123.4,
@@ -81,6 +86,9 @@ class TestRagAskEndpoint:
         assert body["sources"][0]["source_file"] == "doc.pdf"
         assert body["sources"][0]["score"] == 0.95
         assert body["sources"][0]["chunk_index"] == 0
+        assert body["sources"][0]["sheet_name"] == "基本設計"
+        assert body["sources"][0]["cell_range"] == "A1:B3"
+        assert body["sources"][0]["content_type"] == "table"
         assert body["metadata"]["latency_ms"] == 123.4
         assert body["metadata"]["prompt_tokens"] == 100
         assert body["metadata"]["completion_tokens"] == 50
