@@ -1,5 +1,6 @@
 import { Navigate, createBrowserRouter } from "react-router-dom"
 
+import { AuthGuard } from "@/features/auth/components/auth-guard"
 import LoginPage from "@/features/auth/pages/login-page"
 import ChatPage from "@/features/chat/pages/chat-page"
 
@@ -14,7 +15,11 @@ export const router = createBrowserRouter([
   },
   {
     path: "/chat",
-    element: <ChatPage />,
+    element: (
+      <AuthGuard>
+        <ChatPage />
+      </AuthGuard>
+    ),
   },
   {
     path: "*",

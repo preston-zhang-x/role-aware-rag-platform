@@ -1,5 +1,4 @@
 import {
-  ArrowRight,
   ClipboardCheck,
   Coins,
   Database,
@@ -9,12 +8,10 @@ import {
   ShieldCheck,
   Workflow,
 } from "lucide-react"
-import { Link } from "react-router-dom"
 
 import { AppShell } from "@/components/layout/app-shell"
 import { PageHeader } from "@/components/layout/page-header"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import {
   Card,
   CardContent,
@@ -22,7 +19,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
+import { LoginForm } from "@/features/auth/components/login-form"
 
 export default function LoginPage() {
   return (
@@ -53,6 +50,7 @@ export default function LoginPage() {
                   ユーザーの権限に応じて、検索対象となる文書範囲を自動で切り替えます。
                 </p>
               </div>
+
               <div className="rounded-2xl border bg-white/70 p-4">
                 <Database className="size-5 text-primary" />
                 <p className="mt-3 text-sm font-semibold text-slate-900">回答と出典の対応</p>
@@ -60,6 +58,7 @@ export default function LoginPage() {
                   回答本文と参照元の資料をあわせて確認でき、根拠を追跡しやすくしています。
                 </p>
               </div>
+
               <div className="rounded-2xl border bg-white/70 p-4">
                 <ShieldCheck className="size-5 text-primary" />
                 <p className="mt-3 text-sm font-semibold text-slate-900">モデル構成を柔軟に切り替え</p>
@@ -67,6 +66,7 @@ export default function LoginPage() {
                   情報セキュリティ要件に応じてローカル LLM と外部 LLM を切り替えられ、機密性を確保しながら精度とコストのバランスを調整できます。
                 </p>
               </div>
+
               <div className="rounded-2xl border bg-white/70 p-4">
                 <Languages className="size-5 text-primary" />
                 <p className="mt-3 text-sm font-semibold text-slate-900">日本語特化の検索処理</p>
@@ -74,6 +74,7 @@ export default function LoginPage() {
                   日本語文書の検索を前提に、形態素解析や文書構造を考慮した処理を組み込んでいます。
                 </p>
               </div>
+
               <div className="rounded-2xl border bg-white/70 p-4">
                 <FileSpreadsheet className="size-5 text-primary" />
                 <p className="mt-3 text-sm font-semibold text-slate-900">日本式 Excel 設計書対応</p>
@@ -81,6 +82,7 @@ export default function LoginPage() {
                   複雑なシート構成や結合セルを含む日本式 Excel 設計書、PDF 文書の解析に対応しています。
                 </p>
               </div>
+
               <div className="rounded-2xl border bg-white/70 p-4">
                 <Coins className="size-5 text-primary" />
                 <p className="mt-3 text-sm font-semibold text-slate-900">トークン使用量とコスト監視</p>
@@ -88,6 +90,7 @@ export default function LoginPage() {
                   latency と token 情報を確認できるため、応答性能と推論コストの両方を把握しやすくしています。
                 </p>
               </div>
+
               <div className="rounded-2xl border bg-white/70 p-4">
                 <SearchCheck className="size-5 text-primary" />
                 <p className="mt-3 text-sm font-semibold text-slate-900">複数検索モードに対応</p>
@@ -95,6 +98,7 @@ export default function LoginPage() {
                   vector、BM25、hybrid、hybrid rerank を切り替えながら、用途に合った検索品質を比較できます。
                 </p>
               </div>
+
               <div className="rounded-2xl border bg-white/70 p-4">
                 <ClipboardCheck className="size-5 text-primary" />
                 <p className="mt-3 text-sm font-semibold text-slate-900">評価データセットで精度検証</p>
@@ -102,6 +106,7 @@ export default function LoginPage() {
                   評価データセットとレポートを使って、検索精度や回答品質を継続的に確認できます。
                 </p>
               </div>
+
               <div className="rounded-2xl border bg-white/70 p-4">
                 <Workflow className="size-5 text-primary" />
                 <p className="mt-3 text-sm font-semibold text-slate-900">フォールバックで高い互換性</p>
@@ -114,39 +119,7 @@ export default function LoginPage() {
         </section>
 
         <aside className="xl:sticky xl:top-6">
-          <Card className="border-white/70">
-            <CardHeader className="space-y-3">
-              <Badge variant="secondary" className="w-fit">
-                Sign In
-              </Badge>
-              <CardTitle className="text-2xl">ログイン</CardTitle>
-              <CardDescription>ユーザー名とパスワードを入力してください。</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="space-y-5">
-                <div className="space-y-2">
-                  <label htmlFor="username" className="text-sm font-medium text-slate-700">
-                    ユーザー名
-                  </label>
-                  <Input id="username" placeholder="admin_demo" />
-                </div>
-
-                <div className="space-y-2">
-                  <label htmlFor="password" className="text-sm font-medium text-slate-700">
-                    パスワード
-                  </label>
-                  <Input id="password" type="password" placeholder="••••••••" />
-                </div>
-              </div>
-
-              <Button asChild className="w-full">
-                <Link to="/chat">
-                  ワークスペースへ進む
-                  <ArrowRight className="size-4" />
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
+          <LoginForm />
         </aside>
       </div>
     </AppShell>
