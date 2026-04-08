@@ -30,10 +30,12 @@ export function PageHeader({
             {eyebrow}
           </p>
         ) : null}
+
         <div className="space-y-2">
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
             {title}
           </h1>
+
           {description ? (
             <p className="max-w-2xl text-sm leading-6 text-slate-600 sm:text-base">
               {description}
@@ -41,7 +43,8 @@ export function PageHeader({
           ) : null}
         </div>
       </div>
-      {actions ? <div className="flex items-center gap-3">{actions}</div> : null}
+
+      {actions ? <div className="flex flex-wrap items-center gap-3 md:justify-end">{actions}</div> : null}
     </div>
   )
 }

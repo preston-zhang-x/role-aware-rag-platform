@@ -1,8 +1,8 @@
 import { Bot, Coins, Database, Gauge, SendHorizonal } from "lucide-react"
-import { Link } from "react-router-dom"
 
 import { AppShell } from "@/components/layout/app-shell"
 import { PageHeader } from "@/components/layout/page-header"
+import { UserMenu } from "@/components/layout/user-menu"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -26,9 +26,7 @@ export default function ChatPage() {
           actions={
             <>
               <Badge variant="secondary">role-based UI</Badge>
-              <Button asChild variant="outline">
-                <Link to="/login">ログイン画面に戻る</Link>
-              </Button>
+              <UserMenu />
             </>
           }
         />
