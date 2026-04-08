@@ -30,19 +30,28 @@ export function UserMenu() {
   }
 
   return (
-    <div className="flex flex-wrap items-center justify-end gap-3 rounded-2xl border border-white/70 bg-white/85 px-3 py-2 shadow-sm">
-      <div className="min-w-0 text-right">
+    <div className="flex max-w-full items-center gap-3 rounded-2xl border border-white/70 bg-white/92 px-3 py-2 shadow-[0_18px_36px_-24px_rgba(15,23,42,0.25)] backdrop-blur">
+      <div className="min-w-0 flex flex-1 flex-wrap items-center gap-2">
         <p className="truncate text-sm font-semibold text-slate-900">
           {currentUser.username}
         </p>
-        <div className="mt-1">
-          <Badge variant={roleBadgeVariantMap[currentUser.role]}>
-            {roleLabelMap[currentUser.role]}
-          </Badge>
-        </div>
+        <Badge
+          variant={roleBadgeVariantMap[currentUser.role]}
+          className="h-6 px-2.5 text-[11px] tracking-[0.08em]"
+        >
+          {roleLabelMap[currentUser.role]}
+        </Badge>
       </div>
 
-      <Button type="button" variant="outline" size="sm" onClick={handleLogout}>
+      <div className="h-8 w-px shrink-0 bg-slate-200" />
+
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="shrink-0"
+        onClick={handleLogout}
+      >
         <LogOut className="size-4" />
         ログアウト
       </Button>
