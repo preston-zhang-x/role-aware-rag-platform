@@ -18,7 +18,7 @@ export function AppShell({ header, children, className }: AppShellProps) {
 
       <div className="relative mx-auto flex min-h-screen max-w-7xl flex-col px-4 py-6 sm:px-6 lg:px-8">
         {header}
-        <main className={cn("mt-6 flex-1", className)}>{children}</main>
+        <main className={cn("mt-6 flex min-h-0 flex-1 flex-col", className)}>{children}</main>
       </div>
     </div>
   )
