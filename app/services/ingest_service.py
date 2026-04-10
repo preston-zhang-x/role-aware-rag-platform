@@ -9,7 +9,6 @@ from llama_index.core import Document
 from llama_index.core.ingestion import IngestionPipeline
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.core.schema import TextNode
-from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.vector_stores.qdrant import QdrantVectorStore
 from qdrant_client.http import models
 
@@ -17,6 +16,7 @@ from app.clients.qdrant_client import get_qdrant_client
 from app.core.config import get_openai_settings
 from app.services.bm25_service import invalidate_bm25_cache
 from app.services.document_loader import DocumentLoader
+from app.services.openai_compatible_embedding import OpenAICompatibleEmbedding
 
 DEFAULT_COLLECTION = "documents"
 CHUNK_SIZE = 500
@@ -170,8 +170,8 @@ class IngestService:
 
     def _create_pipeline(self) -> IngestionPipeline:
         # 埋め込み生成だけを LlamaIndex の pipeline に任せる。
-        embedding = OpenAIEmbedding(
-            model=self.embedding_model,
+        embedding = OpenAICompatibleEmbedding(
+            model_name=self.embedding_model,
             api_key=self.openai_settings.openai_api_key,
             api_base=self.openai_settings.openai_base_url,
             dimensions=self.openai_settings.embedding_dimensions,
