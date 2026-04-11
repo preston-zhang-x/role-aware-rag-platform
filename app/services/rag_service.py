@@ -5,9 +5,11 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Callable
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any
 
+import httpx
 import logging
 import openai
 from openai import OpenAI
@@ -15,6 +17,12 @@ from qdrant_client.http.models import FieldCondition, Filter, MatchAny
 
 from app.clients.qdrant_client import get_qdrant_client
 from app.core.config import get_openai_settings, get_retrieval_settings
+from app.core.model_provider import (
+    build_auth_headers,
+    build_chat_extra_body,
+    build_ollama_native_chat_url,
+    is_ollama_base_url,
+)
 from app.services.bm25_service import BM25Hit, get_cached_bm25_service
 from app.services.hybrid_retriever import reciprocal_rank_fusion
 from app.services.reranker_service import (
@@ -78,8 +86,8 @@ class RagService:
         reranker_client: CohereCompatibleRerankerClient | None = None,
         bm25_provider: Callable[..., Any] | None = None,
     ) -> None:
-        self.openai_settings = get_openai_settings()
-        self.retrieval_settings = get_retrieval_settings()
+        self.openai_settings = deepcopy(get_openai_settings())
+        self.retrieval_settings = deepcopy(get_retrieval_settings())
         self.collection_name = collection_name
         self.top_k = self.retrieval_settings.top_k if top_k is None else top_k
         if self.top_k <= 0:
@@ -371,44 +379,33 @@ class RagService:
         Returns: (answer, latency_ms, prompt_tokens, completion_tokens, total_tokens)
         """
 
-        # 検索結果を「参考情報」テキストに組み立てる
-        context_parts: list[str] = []
-        for i, src in enumerate(sources, start=1):
-            location = src.source_file
-            if src.payload.get("sheet_name"):
-                location += f" > {src.payload['sheet_name']}"
-            if src.payload.get("cell_range"):
-                location += f" [{src.payload['cell_range']}]"
-            context_parts.append(f"【参考{i}】（出典: {location}）\n{src.text}")
-        context_text = "\n---\n".join(context_parts)
-
-        # ユーザーメッセージを組み立てる
-        user_message = (
-            f"以下の参考情報を元に質問に答えてください。\n\n"
-            f"参考情報:\n{context_text}\n\n"
-            f"質問: {question}"
-        )
+        messages = self._build_generation_messages(question, sources)
 
         # LLM に投げる（Chat Completion API）— タイムアウト＆エラーハンドリング付き
         try:
-            start = time.time()  # タイムアウト計測開始
-            response = self.openai_client.chat.completions.create(
-                model=self.openai_settings.chat_model,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": user_message},
-                ],
-                temperature=0.3,
-                timeout=LLM_TIMEOUT_SECONDS,
+            if self._should_use_ollama_native_chat():
+                try:
+                    return self._generate_with_ollama_native(messages)
+                except (httpx.HTTPError, ValueError):
+                    logger.warning(
+                        "Ollama native chat への切り替えに失敗したため、"
+                        "OpenAI-compatible API にフォールバックします",
+                        exc_info=True,
+                    )
+
+            return self._generate_with_openai(messages)
+        except httpx.TimeoutException:
+            logger.warning(
+                "Ollama native chat がタイムアウトしました (質問: %.50s...)",
+                question,
             )
-            latency_ms = (time.time() - start) * 1000
-            # トークン数を取得
-            usage = response.usage
-            prompt_tokens = usage.prompt_tokens if usage else 0
-            completion_tokens = usage.completion_tokens if usage else 0
-            total_tokens = usage.total_tokens if usage else 0
-            answer = response.choices[0].message.content or ""
-            return (answer, latency_ms, prompt_tokens, completion_tokens, total_tokens)
+            return (FALLBACK_ANSWER, 0.0, 0, 0, 0)
+        except httpx.RequestError:
+            logger.warning(
+                "Ollama native chat への接続に失敗しました (質問: %.50s...)",
+                question,
+            )
+            return (FALLBACK_ANSWER, 0.0, 0, 0, 0)
         except openai.APITimeoutError:
             logger.warning(
                 "LLM APIがタイムアウトしました (質問: %.50s...)",
@@ -435,3 +432,95 @@ class RagService:
                 exc_info=True,
             )
             return (FALLBACK_ANSWER, 0.0, 0, 0, 0)
+
+    def _build_generation_messages(
+        self,
+        question: str,
+        sources: list[SourceChunk],
+    ) -> list[dict[str, str]]:
+        """検索結果から生成用の system/user メッセージを組み立てる。"""
+        # 検索結果を「参考情報」テキストに組み立てる
+        context_parts: list[str] = []
+        for i, src in enumerate(sources, start=1):
+            location = src.source_file
+            if src.payload.get("sheet_name"):
+                location += f" > {src.payload['sheet_name']}"
+            if src.payload.get("cell_range"):
+                location += f" [{src.payload['cell_range']}]"
+            context_parts.append(f"【参考{i}】（出典: {location}）\n{src.text}")
+        context_text = "\n---\n".join(context_parts)
+
+        # ユーザーメッセージを組み立てる
+        user_message = (
+            f"以下の参考情報を元に質問に答えてください。\n\n"
+            f"参考情報:\n{context_text}\n\n"
+            f"質問: {question}"
+        )
+        return [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_message},
+        ]
+
+    def _generate_with_openai(
+        self, messages: list[dict[str, str]]
+    ) -> tuple[str, float, int, int, int]:
+        """OpenAI-compatible Chat Completions API で回答を生成する。"""
+        start = time.perf_counter()
+        extra_body = build_chat_extra_body(
+            base_url=self.openai_settings.openai_base_url,
+            chat_think=self.openai_settings.chat_think,
+        )
+        response = self.openai_client.chat.completions.create(
+            model=self.openai_settings.chat_model,
+            messages=messages,
+            temperature=0.3,
+            extra_body=extra_body,
+            timeout=LLM_TIMEOUT_SECONDS,
+        )
+        latency_ms = (time.perf_counter() - start) * 1000
+        usage = response.usage
+        prompt_tokens = usage.prompt_tokens if usage else 0
+        completion_tokens = usage.completion_tokens if usage else 0
+        total_tokens = usage.total_tokens if usage else 0
+        answer = response.choices[0].message.content or ""
+        return (answer, latency_ms, prompt_tokens, completion_tokens, total_tokens)
+
+    def _generate_with_ollama_native(
+        self, messages: list[dict[str, str]]
+    ) -> tuple[str, float, int, int, int]:
+        """Ollama native /api/chat を使って think オプションを確実に反映する。"""
+        start = time.perf_counter()
+        headers = {
+            "Content-Type": "application/json",
+            **build_auth_headers(self.openai_settings.openai_api_key),
+        }
+
+        response = httpx.post(
+            build_ollama_native_chat_url(self.openai_settings.openai_base_url),
+            headers=headers,
+            json={
+                "model": self.openai_settings.chat_model,
+                "messages": messages,
+                "think": self.openai_settings.chat_think,
+                "stream": False,
+            },
+            timeout=LLM_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        message = payload.get("message")
+        if not isinstance(message, dict):
+            raise ValueError("ollama native response does not contain message")
+
+        latency_ms = (time.perf_counter() - start) * 1000
+        prompt_tokens = int(payload.get("prompt_eval_count") or 0)
+        completion_tokens = int(payload.get("eval_count") or 0)
+        total_tokens = prompt_tokens + completion_tokens
+        answer = str(message.get("content") or "")
+        return (answer, latency_ms, prompt_tokens, completion_tokens, total_tokens)
+
+    def _should_use_ollama_native_chat(self) -> bool:
+        """Ollama で think 制御が必要な場合のみ native API に切り替える。"""
+        return self.openai_settings.chat_think is not None and is_ollama_base_url(
+            self.openai_settings.openai_base_url
+        )
