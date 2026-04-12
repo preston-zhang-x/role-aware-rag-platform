@@ -70,4 +70,5 @@ def test_settings_getters_load_from_repo_root_env_when_cwd_changes(
 
     assert openai_settings.openai_base_url
     assert openai_settings.embedding_model
+    assert openai_settings.chat_think is False
     assert retrieval_settings.top_k > 0
