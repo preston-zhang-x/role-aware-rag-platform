@@ -102,6 +102,8 @@ def test_check_model_provider_accepts_latest_alias(monkeypatch) -> None:
         embedding_model = "bge-m3"
 
     monkeypatch.setattr(health_module, "get_openai_settings", lambda: FakeSettings())
-    monkeypatch.setattr(health_module.httpx, "get", lambda *args, **kwargs: FakeResponse())
+    monkeypatch.setattr(
+        health_module.httpx, "get", lambda *args, **kwargs: FakeResponse()
+    )
 
     health_module.check_model_provider()

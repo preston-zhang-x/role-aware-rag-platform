@@ -56,9 +56,7 @@ def check_model_provider() -> None:
         model for model in required_models if model not in available_models
     )
     if missing_models:
-        raise ValueError(
-            "missing required models: " + ", ".join(missing_models)
-        )
+        raise ValueError("missing required models: " + ", ".join(missing_models))
 
 
 def check_reranker_service() -> None:

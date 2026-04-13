@@ -226,6 +226,9 @@ class TestGenerateUsageNone:
         monkeypatch.setattr("app.services.rag_service.httpx.post", post_mock)
 
         service, _ = _build_service(mock_openai_client)
+        service.openai_settings.openai_base_url = "http://localhost:11434/v1"
+        service.openai_settings.openai_api_key = "ollama"
+        service.openai_settings.chat_think = False
 
         result = service._generate(
             "q",
@@ -264,6 +267,8 @@ class TestGenerateUsageNone:
         mock_openai_client.chat.completions.create.return_value = mock_response
 
         service, _ = _build_service(mock_openai_client)
+        service.openai_settings.openai_base_url = "http://localhost:11434/v1"
+        service.openai_settings.chat_think = False
 
         result = service._generate(
             "q",
@@ -272,10 +277,9 @@ class TestGenerateUsageNone:
 
         assert result[0] == "fallback ok"
         assert mock_openai_client.chat.completions.create.call_count == 1
-        assert (
-            mock_openai_client.chat.completions.create.call_args.kwargs["extra_body"]
-            == {"think": False}
-        )
+        assert mock_openai_client.chat.completions.create.call_args.kwargs[
+            "extra_body"
+        ] == {"think": False}
 
 
 # ── RagResult dataclass デフォルト値テスト ────────────────────

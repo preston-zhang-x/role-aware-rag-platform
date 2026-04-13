@@ -236,13 +236,19 @@ class IngestService:
         chunk_position_map = []
         for chunk_meta in parse_result.chunks:
             if chunk_meta.sheet_name or chunk_meta.cell_range:
-                chunk_position_map.append({
-                    "start": chunk_meta.char_start,
-                    "end": chunk_meta.char_end,
-                    "sheet_name": chunk_meta.sheet_name,
-                    "cell_range": chunk_meta.cell_range,
-                    "content_type": chunk_meta.content_type.value if chunk_meta.content_type else None,
-                })
+                chunk_position_map.append(
+                    {
+                        "start": chunk_meta.char_start,
+                        "end": chunk_meta.char_end,
+                        "sheet_name": chunk_meta.sheet_name,
+                        "cell_range": chunk_meta.cell_range,
+                        "content_type": (
+                            chunk_meta.content_type.value
+                            if chunk_meta.content_type
+                            else None
+                        ),
+                    }
+                )
 
         # 各ノードに安定 ID と検索用 metadata を付与する。
         search_start = 0
