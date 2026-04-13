@@ -4,6 +4,7 @@
 
 import contextvars
 import logging
+import os
 import sys
 import uuid
 
@@ -38,13 +39,18 @@ def setup_logging() -> None:
     """
     アプリケーション起動時に一度だけ呼ぶ。
     """
+    enqueue_logs = os.getenv("LOGURU_ENQUEUE", "true").lower() not in {
+        "0",
+        "false",
+        "no",
+    }
     # ── 1. Loguru をリセットして JSON sink を追加 ──
     logger.remove()  # デフォルト（stderr テキスト出力）を削除
     logger.add(
         sys.stderr,
         serialize=True,  # JSON 出力
         level="INFO",
-        enqueue=True,  # スレッドセーフ
+        enqueue=enqueue_logs,  # テスト環境では無効化できる
     )
     # ── 2. 標準 logging のルートを Loguru に接続 ──
     logging.basicConfig(handlers=[InterceptHandler()], level=0, force=True)
