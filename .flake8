@@ -8,6 +8,14 @@ exclude =
     .venv,
     .pytest_cache,
     .mypy_cache,
+    .tmp,
     __pycache__,
     *.egg-info,
-    script
+    script,
+    frontend/node_modules,
+    frontend/dist,
+    frontend/dist-ssr,
+    frontend/.vite,
+    frontend/coverage,
+    frontend/playwright-report,
+    frontend/test-results

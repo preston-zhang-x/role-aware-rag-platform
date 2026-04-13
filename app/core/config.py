@@ -32,7 +32,7 @@ class OpenAISettings(BaseSettings):
     embedding_model: str
     embedding_dimensions: int
     chat_model: str = "gpt-4o-mini"
-    chat_think: bool | None = None
+    chat_think: bool | None = False
 
 
 class RetrievalSettings(BaseSettings):
