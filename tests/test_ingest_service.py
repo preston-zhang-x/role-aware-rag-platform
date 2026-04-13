@@ -185,7 +185,11 @@ class TestFactories:
                 captured["transformations"] = transformations
                 self.transformations = transformations
 
-        monkeypatch.setattr(ingest_service_module, "OpenAIEmbedding", FakeEmbedding)
+        monkeypatch.setattr(
+            ingest_service_module,
+            "OpenAICompatibleEmbedding",
+            FakeEmbedding,
+        )
         monkeypatch.setattr(
             ingest_service_module,
             "IngestionPipeline",
@@ -205,7 +209,7 @@ class TestFactories:
         assert len(pipeline.transformations) == 1
         assert captured["transformations"] == pipeline.transformations
         assert captured["embedding_kwargs"] == {
-            "model": ingest_service.embedding_model,
+            "model_name": ingest_service.embedding_model,
             "api_key": ingest_service.openai_settings.openai_api_key,
             "api_base": ingest_service.openai_settings.openai_base_url,
             "dimensions": ingest_service.openai_settings.embedding_dimensions,

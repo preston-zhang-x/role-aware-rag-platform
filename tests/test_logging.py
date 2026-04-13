@@ -154,6 +154,7 @@ def test_setup_logging_wires_loguru_and_third_party_loggers(monkeypatch) -> None
     }
     original_get_logger = logging.getLogger
 
+    monkeypatch.setenv("LOGURU_ENQUEUE", "true")
     monkeypatch.setattr(logging_module, "logger", fake_logger)
     monkeypatch.setattr(
         logging_module.logging,
