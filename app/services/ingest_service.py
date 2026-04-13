@@ -9,7 +9,6 @@ from llama_index.core import Document
 from llama_index.core.ingestion import IngestionPipeline
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.core.schema import TextNode
-from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.vector_stores.qdrant import QdrantVectorStore
 from qdrant_client.http import models
 
@@ -17,6 +16,7 @@ from app.clients.qdrant_client import get_qdrant_client
 from app.core.config import get_openai_settings
 from app.services.bm25_service import invalidate_bm25_cache
 from app.services.document_loader import DocumentLoader
+from app.services.openai_compatible_embedding import OpenAICompatibleEmbedding
 
 DEFAULT_COLLECTION = "documents"
 CHUNK_SIZE = 500
@@ -170,8 +170,8 @@ class IngestService:
 
     def _create_pipeline(self) -> IngestionPipeline:
         # 埋め込み生成だけを LlamaIndex の pipeline に任せる。
-        embedding = OpenAIEmbedding(
-            model=self.embedding_model,
+        embedding = OpenAICompatibleEmbedding(
+            model_name=self.embedding_model,
             api_key=self.openai_settings.openai_api_key,
             api_base=self.openai_settings.openai_base_url,
             dimensions=self.openai_settings.embedding_dimensions,
@@ -236,13 +236,19 @@ class IngestService:
         chunk_position_map = []
         for chunk_meta in parse_result.chunks:
             if chunk_meta.sheet_name or chunk_meta.cell_range:
-                chunk_position_map.append({
-                    "start": chunk_meta.char_start,
-                    "end": chunk_meta.char_end,
-                    "sheet_name": chunk_meta.sheet_name,
-                    "cell_range": chunk_meta.cell_range,
-                    "content_type": chunk_meta.content_type.value if chunk_meta.content_type else None,
-                })
+                chunk_position_map.append(
+                    {
+                        "start": chunk_meta.char_start,
+                        "end": chunk_meta.char_end,
+                        "sheet_name": chunk_meta.sheet_name,
+                        "cell_range": chunk_meta.cell_range,
+                        "content_type": (
+                            chunk_meta.content_type.value
+                            if chunk_meta.content_type
+                            else None
+                        ),
+                    }
+                )
 
         # 各ノードに安定 ID と検索用 metadata を付与する。
         search_start = 0

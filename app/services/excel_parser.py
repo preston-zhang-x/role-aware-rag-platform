@@ -156,7 +156,9 @@ class JapaneseExcelParser(BaseParser):
                     merge_spans,
                 )
                 if section_md:
-                    full_text, section_start = self._append_section(full_text, section_md)
+                    full_text, section_start = self._append_section(
+                        full_text, section_md
+                    )
                     if section_start is not None:
                         for chunk in section_chunks:
                             chunk.char_start += section_start

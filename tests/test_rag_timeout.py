@@ -34,6 +34,7 @@ def _build_service_with_sources(
         retrieval_mode="vector",
     )
     service.openai_client = mock_openai_client
+    service.openai_settings.openai_base_url = "https://api.example.com/v1"
     # テスト用のソースデータ
     sources = [
         SourceChunk(
@@ -151,6 +152,7 @@ class TestLLMTimeoutFallback:
             retrieval_mode="vector",
         )
         service.openai_client = mock_openai_client
+        service.openai_settings.openai_base_url = "https://api.example.com/v1"
         # LLM だけタイムアウト
         mock_openai_client.chat.completions.create.side_effect = openai.APITimeoutError(
             request=MagicMock()

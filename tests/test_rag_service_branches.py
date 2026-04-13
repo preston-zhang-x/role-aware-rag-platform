@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 
 from app.services.rag_service import (
@@ -149,6 +150,7 @@ class TestGenerateUsageNone:
         mock_openai_client.chat.completions.create.return_value = mock_response
 
         service, _ = _build_service(mock_openai_client)
+        service.openai_settings.openai_base_url = "https://api.example.com/v1"
         sources = [
             SourceChunk(text="chunk", source_file="f.pdf", score=0.9),
         ]
@@ -159,6 +161,10 @@ class TestGenerateUsageNone:
         assert result[2] == 0  # prompt_tokens
         assert result[3] == 0  # completion_tokens
         assert result[4] == 0  # total_tokens
+        assert (
+            mock_openai_client.chat.completions.create.call_args.kwargs["extra_body"]
+            is None
+        )
 
     def test_generate_none_content_returns_empty_string(
         self, mock_openai_client: MagicMock
@@ -174,6 +180,7 @@ class TestGenerateUsageNone:
         mock_openai_client.chat.completions.create.return_value = mock_response
 
         service, _ = _build_service(mock_openai_client)
+        service.openai_settings.openai_base_url = "https://api.example.com/v1"
         sources = [
             SourceChunk(text="chunk", source_file="f.pdf", score=0.9),
         ]
@@ -182,6 +189,97 @@ class TestGenerateUsageNone:
 
         assert result[0] == ""
         assert result[4] == 15
+
+    def test_generate_omits_extra_body_when_chat_think_is_none(
+        self, mock_openai_client: MagicMock
+    ) -> None:
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=MagicMock(content="ok"))]
+        mock_response.usage = None
+        mock_openai_client.chat.completions.create.return_value = mock_response
+
+        service, _ = _build_service(mock_openai_client)
+        service.openai_settings.chat_think = None
+
+        result = service._generate(
+            "q",
+            [SourceChunk(text="chunk", source_file="f.pdf", score=0.9)],
+        )
+
+        assert result[0] == "ok"
+        assert (
+            mock_openai_client.chat.completions.create.call_args.kwargs["extra_body"]
+            is None
+        )
+
+    def test_generate_uses_ollama_native_chat(
+        self, mock_openai_client: MagicMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        response = MagicMock()
+        response.raise_for_status.return_value = None
+        response.json.return_value = {
+            "message": {"content": "native ok"},
+            "prompt_eval_count": 12,
+            "eval_count": 7,
+        }
+        post_mock = MagicMock(return_value=response)
+        monkeypatch.setattr("app.services.rag_service.httpx.post", post_mock)
+
+        service, _ = _build_service(mock_openai_client)
+        service.openai_settings.openai_base_url = "http://localhost:11434/v1"
+        service.openai_settings.openai_api_key = "ollama"
+        service.openai_settings.chat_think = False
+
+        result = service._generate(
+            "q",
+            [SourceChunk(text="chunk", source_file="f.pdf", score=0.9)],
+        )
+
+        assert result[0] == "native ok"
+        assert result[2] == 12
+        assert result[3] == 7
+        assert result[4] == 19
+        assert mock_openai_client.chat.completions.create.call_count == 0
+
+        call_args = post_mock.call_args
+        assert call_args.args[0] == "http://localhost:11434/api/chat"
+        assert call_args.kwargs["json"]["model"] == service.openai_settings.chat_model
+        assert call_args.kwargs["json"]["think"] is False
+        assert call_args.kwargs["json"]["stream"] is False
+        assert call_args.kwargs["headers"]["Authorization"] == "Bearer ollama"
+
+    def test_generate_falls_back_to_openai_when_ollama_native_fails(
+        self, mock_openai_client: MagicMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        request = httpx.Request("POST", "http://localhost:11434/api/chat")
+
+        def raise_request_error(*args, **kwargs):
+            raise httpx.RequestError("connection failed", request=request)
+
+        monkeypatch.setattr(
+            "app.services.rag_service.httpx.post",
+            raise_request_error,
+        )
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=MagicMock(content="fallback ok"))]
+        mock_response.usage = None
+        mock_openai_client.chat.completions.create.return_value = mock_response
+
+        service, _ = _build_service(mock_openai_client)
+        service.openai_settings.openai_base_url = "http://localhost:11434/v1"
+        service.openai_settings.chat_think = False
+
+        result = service._generate(
+            "q",
+            [SourceChunk(text="chunk", source_file="f.pdf", score=0.9)],
+        )
+
+        assert result[0] == "fallback ok"
+        assert mock_openai_client.chat.completions.create.call_count == 1
+        assert mock_openai_client.chat.completions.create.call_args.kwargs[
+            "extra_body"
+        ] == {"think": False}
 
 
 # ── RagResult dataclass デフォルト値テスト ────────────────────
@@ -298,6 +396,7 @@ class TestAskWithMetadata:
     def test_ask_populates_metadata_fields(self, mock_openai_client: MagicMock) -> None:
         """ask() がメタデータ付きの RagResult を返すことを検証。"""
         service, wrapper = _build_service(mock_openai_client)
+        service.openai_settings.openai_base_url = "https://api.example.com/v1"
         wrapper.client.query_points.return_value = FakeQueryResult(
             points=[
                 FakePoint(
