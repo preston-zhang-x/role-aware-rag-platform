@@ -42,7 +42,9 @@ class RetrievalSettings(BaseSettings):
         extra="ignore",
     )
 
-    retrieval_mode: Literal["vector", "bm25", "hybrid", "hybrid_rerank"] = "hybrid"
+    retrieval_mode: Literal["vector", "bm25", "hybrid", "hybrid_rerank"] = (
+        "hybrid_rerank"
+    )
     top_k: int = Field(default=5, gt=0)
     score_threshold: float = Field(default=0.0, ge=0.0)
     rerank_base_url: str | None = None
