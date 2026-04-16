@@ -23,6 +23,16 @@ def test_retrieval_settings_loads_strategy_and_top_k(
     assert settings.top_k == 3
 
 
+def test_retrieval_settings_defaults_to_hybrid_rerank_when_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("RETRIEVAL_MODE", raising=False)
+
+    settings = RetrievalSettings(_env_file=None)
+
+    assert settings.retrieval_mode == "hybrid_rerank"
+
+
 def test_retrieval_settings_rejects_invalid_mode(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
