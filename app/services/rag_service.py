@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from collections.abc import Callable
 from copy import deepcopy
@@ -31,21 +32,26 @@ from app.services.reranker_service import (
 )
 
 logger = logging.getLogger(__name__)
-FALLBACK_ANSWER = (
+JAPANESE_NOT_FOUND_ANSWER = "ドキュメントに該当する情報が見つかりませんでした。"
+ENGLISH_NOT_FOUND_ANSWER = "No relevant information was found in the documents."
+JAPANESE_FALLBACK_ANSWER = (
     "現在サービスが混雑しています。しばらくしてからもう一度お試しください。"
 )
+ENGLISH_FALLBACK_ANSWER = "The service is currently busy. Please try again later."
 LLM_TIMEOUT_SECONDS = 30.0
 DEFAULT_COLLECTION = "documents"
 DEFAULT_TOP_K = 5
 DEFAULT_CANDIDATE_TOP_K = 20
 VALID_RETRIEVAL_MODES = {"vector", "bm25", "hybrid", "hybrid_rerank"}
 Payload = dict[str, Any]
+_LATIN_LETTER_RE = re.compile(r"[A-Za-z]")
 
 SYSTEM_PROMPT = (
-    "あなたは社内ドキュメントに基づいて質問に答えるアシスタントです。\n"
-    "以下の「参考情報」だけを使って回答してください。\n"
-    "参考情報に答えがない場合は「ドキュメントに該当する情報が見つかりませんでした」と答えてください。\n"
-    "回答には必ず出典を明記してください。出典は参考情報に記載されている形式（ファイル名 > シート名 [セル範囲]）をそのまま使用してください。"
+    "You are a retrieval assistant that answers questions using the provided reference information.\n"
+    "Use only the reference information when answering.\n"
+    "Answer in the same language as the user's question.\n"
+    "If the reference information does not contain the answer, say so clearly in the same language as the user's question.\n"
+    "Always cite the source using the exact source label shown in the reference information."
 )
 
 
@@ -123,7 +129,7 @@ class RagService:
         sources = self._retrieve_sources(question, user_roles)
         if not sources:
             return RagResult(
-                answer="ドキュメントに該当する情報が見つかりませんでした。",
+                answer=self._build_not_found_answer(question),
                 sources=[],
             )
         # 4. Prompt を組み立てて LLM に投げる（Generation）
@@ -399,31 +405,31 @@ class RagService:
                 "Ollama native chat がタイムアウトしました (質問: %.50s...)",
                 question,
             )
-            return (FALLBACK_ANSWER, 0.0, 0, 0, 0)
+            return (self._build_fallback_answer(question), 0.0, 0, 0, 0)
         except httpx.RequestError:
             logger.warning(
                 "Ollama native chat への接続に失敗しました (質問: %.50s...)",
                 question,
             )
-            return (FALLBACK_ANSWER, 0.0, 0, 0, 0)
+            return (self._build_fallback_answer(question), 0.0, 0, 0, 0)
         except openai.APITimeoutError:
             logger.warning(
                 "LLM APIがタイムアウトしました (質問: %.50s...)",
                 question,
             )
-            return (FALLBACK_ANSWER, 0.0, 0, 0, 0)
+            return (self._build_fallback_answer(question), 0.0, 0, 0, 0)
         except openai.APIConnectionError:
             logger.warning(
                 "LLM APIへの接続に失敗しました (質問: %.50s...)",
                 question,
             )
-            return (FALLBACK_ANSWER, 0.0, 0, 0, 0)
+            return (self._build_fallback_answer(question), 0.0, 0, 0, 0)
         except openai.RateLimitError:
             logger.warning(
                 "LLM APIのレート制限に達しました (質問: %.50s...)",
                 question,
             )
-            return (FALLBACK_ANSWER, 0.0, 0, 0, 0)
+            return (self._build_fallback_answer(question), 0.0, 0, 0, 0)
         except openai.APIStatusError as e:
             logger.error(
                 "LLM APIがステータスコード %d を返しました (質問: %.50s...)",
@@ -431,7 +437,21 @@ class RagService:
                 question,
                 exc_info=True,
             )
-            return (FALLBACK_ANSWER, 0.0, 0, 0, 0)
+            return (self._build_fallback_answer(question), 0.0, 0, 0, 0)
+
+    def _prefers_english_response(self, question: str) -> bool:
+        """英字を含む質問では英語の固定応答を優先する。"""
+        return bool(_LATIN_LETTER_RE.search(question or ""))
+
+    def _build_not_found_answer(self, question: str) -> str:
+        if self._prefers_english_response(question):
+            return ENGLISH_NOT_FOUND_ANSWER
+        return JAPANESE_NOT_FOUND_ANSWER
+
+    def _build_fallback_answer(self, question: str) -> str:
+        if self._prefers_english_response(question):
+            return ENGLISH_FALLBACK_ANSWER
+        return JAPANESE_FALLBACK_ANSWER
 
     def _build_generation_messages(
         self,
@@ -447,14 +467,14 @@ class RagService:
                 location += f" > {src.payload['sheet_name']}"
             if src.payload.get("cell_range"):
                 location += f" [{src.payload['cell_range']}]"
-            context_parts.append(f"【参考{i}】（出典: {location}）\n{src.text}")
+            context_parts.append(f"[Reference {i}] (source: {location})\n{src.text}")
         context_text = "\n---\n".join(context_parts)
 
         # ユーザーメッセージを組み立てる
         user_message = (
-            f"以下の参考情報を元に質問に答えてください。\n\n"
-            f"参考情報:\n{context_text}\n\n"
-            f"質問: {question}"
+            f"Answer the question using only the reference information below.\n\n"
+            f"Reference Information:\n{context_text}\n\n"
+            f"Question: {question}"
         )
         return [
             {"role": "system", "content": SYSTEM_PROMPT},

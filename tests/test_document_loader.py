@@ -27,6 +27,8 @@ class TestRegistry:
         assert ".xlsx" in exts
         assert ".pdf" in exts
         assert ".xls" in exts
+        assert ".html" in exts
+        assert ".htm" in exts
 
     def test_register_new_extension(self, loader):
         """新しい拡張子を登録できること"""
@@ -136,3 +138,16 @@ class TestIntegration:
         # メタデータチェック
         assert len(result.chunks) > 0
         assert result.chunks[0].source_file == str(file_path)
+
+    def test_html_uses_markitdown_fallback(self, loader, tmp_path):
+        file_path = tmp_path / "page.html"
+        file_path.write_text(
+            "<!DOCTYPE html><html><body><article><h1>Title</h1><p>Alpha beta</p></article></body></html>",
+            encoding="utf-8",
+        )
+
+        result = loader.load(str(file_path))
+
+        assert "Title" in result.text
+        assert "Alpha beta" in result.text
+        assert any("フォールバック" in warning for warning in result.warnings)

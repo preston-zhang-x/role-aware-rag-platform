@@ -14,6 +14,7 @@ import pytest
 
 from app.services.rag_service import (
     DEFAULT_CANDIDATE_TOP_K,
+    ENGLISH_NOT_FOUND_ANSWER,
     RagResult,
     RagService,
     SourceChunk,
@@ -427,6 +428,37 @@ class TestAskWithMetadata:
         assert result.prompt_tokens == 100
         assert result.completion_tokens == 50
         assert result.total_tokens == 150
+
+    def test_ask_without_sources_returns_english_message_for_english_question(
+        self, mock_openai_client: MagicMock
+    ) -> None:
+        service, _ = _build_service(mock_openai_client)
+
+        result = service.ask("What is the access token type?", user_roles=["staff"])
+
+        assert result.answer == ENGLISH_NOT_FOUND_ANSWER
+        assert result.sources == []
+
+
+class TestGenerationMessages:
+    def test_generation_messages_use_language_neutral_prompt(
+        self, mock_openai_client: MagicMock
+    ) -> None:
+        service, _ = _build_service(mock_openai_client)
+        messages = service._build_generation_messages(
+            "What is the access token type?",
+            [
+                SourceChunk(
+                    text="token_type is bearer",
+                    source_file="docs/spec.html",
+                    score=0.9,
+                )
+            ],
+        )
+
+        assert "same language as the user's question" in messages[0]["content"]
+        assert "Answer the question using only the reference information below." in messages[1]["content"]
+        assert "[Reference 1] (source: docs/spec.html)" in messages[1]["content"]
 
 
 # ── _rerank_sources エッジケース ──────────────────────────────

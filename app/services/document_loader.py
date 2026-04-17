@@ -28,6 +28,8 @@ class DocumentLoader:
             ".xls": [MarkItDownFallback],  # openpyxl 非対応 → 直接フォールバック
             ".xlsb": [MarkItDownFallback],  # openpyxl 非対応 → 直接フォールバック
             ".pdf": [PDFMarkdownParser, MarkItDownFallback],
+            ".html": [MarkItDownFallback],
+            ".htm": [MarkItDownFallback],
         }
 
     def register(self, ext: str, parsers: list[type[BaseParser]]) -> None:
