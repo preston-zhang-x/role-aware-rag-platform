@@ -2,7 +2,7 @@
 
 **実行日時**: 2026-04-17 12:08:00
 **実行モード**: `admin-only ragbench evaluation`
-**Retrieval Mode**: `hybrid_rerank`
+**Retrieval Mode**: `hybrid`
 **API エンドポイント**: `http://localhost:8000/api/v1/rag/ask`
 **認証エンドポイント**: `http://localhost:8000/api/v1/auth/login`
 **実行権限**: `admin`
