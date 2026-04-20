@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 from collections.abc import Callable
@@ -11,7 +12,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
-import logging
 import openai
 from openai import OpenAI
 from qdrant_client.http.models import FieldCondition, Filter, MatchAny
@@ -21,6 +21,7 @@ from app.core.config import get_openai_settings, get_retrieval_settings
 from app.core.model_provider import (
     build_auth_headers,
     build_chat_extra_body,
+    build_ollama_native_options,
     build_ollama_native_chat_url,
     is_ollama_base_url,
 )
@@ -38,20 +39,39 @@ JAPANESE_FALLBACK_ANSWER = (
     "現在サービスが混雑しています。しばらくしてからもう一度お試しください。"
 )
 ENGLISH_FALLBACK_ANSWER = "The service is currently busy. Please try again later."
+# Backward-compatible aliases kept for older tests/import sites.
+NOT_FOUND_ANSWER = JAPANESE_NOT_FOUND_ANSWER
+FALLBACK_ANSWER = JAPANESE_FALLBACK_ANSWER
 LLM_TIMEOUT_SECONDS = 30.0
 DEFAULT_COLLECTION = "documents"
 DEFAULT_TOP_K = 5
 DEFAULT_CANDIDATE_TOP_K = 20
+DEFAULT_RERANK_CANDIDATE_TOP_K = 40
+DEFAULT_RERANK_RETURN_TOP_N = 15
 VALID_RETRIEVAL_MODES = {"vector", "bm25", "hybrid", "hybrid_rerank"}
 Payload = dict[str, Any]
 _LATIN_LETTER_RE = re.compile(r"[A-Za-z]")
+_CITATION_RE = re.compile(r"\[Reference \d+\]")
+_NON_ENGLISH_SCRIPT_RE = re.compile(r"[\u3040-\u30ff\u4e00-\u9fff]|[ãáàâçéêíóôõúñ¿¡]")
+_NON_ENGLISH_HINTS = (
+    " para ",
+    " conforme ",
+    " instruções ",
+    " referências ",
+    " configuraciones ",
+    " configurações ",
+    " transmisión ",
+    " áudio ",
+)
 
 SYSTEM_PROMPT = (
     "You are a retrieval assistant that answers questions using the provided reference information.\n"
     "Use only the reference information when answering.\n"
     "Answer in the same language as the user's question.\n"
+    "If the user's question is in English, answer only in English and do not switch to another language.\n"
     "If the reference information does not contain the answer, say so clearly in the same language as the user's question.\n"
-    "Always cite the source using the exact source label shown in the reference information."
+    "Keep the answer concise and include the exact menu path or action steps when present in the references.\n"
+    "Always cite the source using the exact source label shown in the reference information, for example [Reference 1]."
 )
 
 
@@ -65,6 +85,8 @@ class SourceChunk:
     score: float
     chunk_index: int = 0
     payload: Payload = field(default_factory=dict)
+    fusion_score: float | None = None
+    rerank_score: float | None = None
 
 
 @dataclass
@@ -106,6 +128,16 @@ class RagService:
             raise ValueError(f"unsupported retrieval_mode: {self.retrieval_mode}")
 
         self.score_threshold = self.retrieval_settings.score_threshold
+        self.rerank_score_threshold = getattr(
+            self.retrieval_settings,
+            "rerank_score_threshold",
+            None,
+        )
+        self.rerank_max_tokens_per_doc = getattr(
+            self.retrieval_settings,
+            "rerank_max_tokens_per_doc",
+            1024,
+        )
         self.qdrant_wrapper = qdrant_wrapper or get_qdrant_client()
         self.bm25_provider = bm25_provider or get_cached_bm25_service
         self.reranker_client = reranker_client
@@ -175,19 +207,48 @@ class RagService:
             sources = self._search_bm25(question, user_roles, limit=self.top_k)
             return self._filter_by_score(sources)
 
+        if self.retrieval_mode == "hybrid":
+            hybrid_sources = self._search_hybrid(
+                question,
+                user_roles,
+                candidate_limit=self.candidate_top_k,
+            )
+            return self._filter_by_score(hybrid_sources[: self.top_k])
+
         hybrid_sources = self._search_hybrid(
             question,
             user_roles,
-            candidate_limit=self.candidate_top_k,
+            candidate_limit=self.rerank_candidate_top_k,
         )
-        if self.retrieval_mode == "hybrid":
-            return self._filter_by_score(hybrid_sources[: self.top_k])
-
-        return self._filter_by_score(self._rerank_sources(question, hybrid_sources))
+        return self._finalize_reranked_sources(question, hybrid_sources)
 
     @property
     def candidate_top_k(self) -> int:
         return max(DEFAULT_CANDIDATE_TOP_K, self.top_k * 4)
+
+    @property
+    def rerank_candidate_top_k(self) -> int:
+        configured = getattr(
+            self.retrieval_settings,
+            "rerank_candidate_top_k",
+            None,
+        )
+        if configured is not None:
+            return max(configured, self.top_k)
+        return max(DEFAULT_RERANK_CANDIDATE_TOP_K, self.top_k * 8)
+
+    @property
+    def rerank_return_top_n(self) -> int:
+        configured = getattr(
+            self.retrieval_settings,
+            "rerank_return_top_n",
+            None,
+        )
+        value = configured if configured is not None else max(
+            DEFAULT_RERANK_RETURN_TOP_N,
+            self.top_k * 3,
+        )
+        return min(max(value, self.top_k), self.rerank_candidate_top_k)
 
     def _search(
         self,
@@ -263,9 +324,20 @@ class RagService:
                 score=hit.rrf_score,
                 chunk_index=hit.chunk_index,
                 payload=dict(hit.payload),
+                fusion_score=hit.rrf_score,
             )
             for hit in fused_hits
         ]
+
+    def _finalize_reranked_sources(
+        self,
+        question: str,
+        hybrid_sources: list[SourceChunk],
+    ) -> list[SourceChunk]:
+        reranked_sources = self._rerank_sources(question, hybrid_sources)
+        if self.rerank_score_threshold is not None:
+            reranked_sources = self._filter_by_rerank_score(reranked_sources)
+        return reranked_sources[: self.top_k]
 
     def _rerank_sources(
         self,
@@ -279,8 +351,9 @@ class RagService:
         try:
             reranked = self.reranker_client.rerank(
                 question,
-                sources[: self.candidate_top_k],
-                top_n=self.top_k,
+                sources[: self.rerank_candidate_top_k],
+                top_n=self.rerank_return_top_n,
+                max_tokens_per_doc=self.rerank_max_tokens_per_doc,
             )
         except RerankerTransientError:
             return sources[: self.top_k]
@@ -291,21 +364,44 @@ class RagService:
             if item.index in seen_indexes:
                 continue
             if 0 <= item.index < len(sources):
-                ordered.append(sources[item.index])
+                ordered.append(
+                    self._with_rerank_score(
+                        sources[item.index],
+                        item.relevance_score,
+                    )
+                )
                 seen_indexes.add(item.index)
 
         if not ordered:
             return sources[: self.top_k]
 
+        target_count = min(self.rerank_return_top_n, len(sources))
         for index, source in enumerate(sources):
-            if len(ordered) >= self.top_k:
+            if len(ordered) >= target_count:
                 break
             if index in seen_indexes:
                 continue
             ordered.append(source)
             seen_indexes.add(index)
 
-        return ordered[: self.top_k]
+        return ordered[:target_count]
+
+    def _with_rerank_score(
+        self,
+        source: SourceChunk,
+        rerank_score: float | None,
+    ) -> SourceChunk:
+        fusion_score = source.fusion_score if source.fusion_score is not None else source.score
+        effective_score = fusion_score if rerank_score is None else rerank_score
+        return SourceChunk(
+            text=source.text,
+            source_file=source.source_file,
+            score=effective_score,
+            chunk_index=source.chunk_index,
+            payload=dict(source.payload),
+            fusion_score=fusion_score,
+            rerank_score=rerank_score,
+        )
 
     def _filter_by_score(self, sources: list[SourceChunk]) -> list[SourceChunk]:
         """スコアが閾値未満のチャンクを除外する。"""
@@ -317,6 +413,27 @@ class RagService:
             logger.info(
                 "score_threshold=%s により %d 件のチャンクを除外しました",
                 self.score_threshold,
+                dropped,
+            )
+        return filtered
+
+    def _filter_by_rerank_score(self, sources: list[SourceChunk]) -> list[SourceChunk]:
+        """rerank スコアが閾値未満のチャンクを除外する。"""
+        if self.rerank_score_threshold is None:
+            return sources
+        if all(source.rerank_score is None for source in sources):
+            return sources
+        filtered = [
+            source
+            for source in sources
+            if source.rerank_score is not None
+            and source.rerank_score >= self.rerank_score_threshold
+        ]
+        dropped = len(sources) - len(filtered)
+        if dropped > 0:
+            logger.info(
+                "rerank_score_threshold=%s により %d 件のチャンクを除外しました",
+                self.rerank_score_threshold,
                 dropped,
             )
         return filtered
@@ -342,6 +459,7 @@ class RagService:
             score=float(point.score),
             chunk_index=payload.get("chunk_index", 0),
             payload=dict(payload),
+            fusion_score=float(point.score),
         )
 
     def _bm25_hit_to_source_chunk(self, hit: BM25Hit) -> SourceChunk:
@@ -352,6 +470,7 @@ class RagService:
             score=hit.score,
             chunk_index=hit.chunk_index,
             payload=dict(hit.payload),
+            fusion_score=hit.score,
         )
 
     def _extract_text(self, payload: dict) -> str:
@@ -386,6 +505,24 @@ class RagService:
         """
 
         messages = self._build_generation_messages(question, sources)
+        result = self._generate_once(question, messages)
+        if self._needs_generation_repair(question, result[0], sources):
+            repair_messages = self._build_repair_messages(
+                question,
+                sources,
+                result[0],
+            )
+            repaired = self._generate_once(question, repair_messages)
+            if repaired[0].strip():
+                return repaired
+        return result
+
+    def _generate_once(
+        self,
+        question: str,
+        messages: list[dict[str, str]],
+    ) -> tuple[str, float, int, int, int]:
+        """1 回分の生成を実行し、必要に応じて fallback を返す。"""
 
         # LLM に投げる（Chat Completion API）— タイムアウト＆エラーハンドリング付き
         try:
@@ -474,12 +611,77 @@ class RagService:
         user_message = (
             f"Answer the question using only the reference information below.\n\n"
             f"Reference Information:\n{context_text}\n\n"
+            "Constraints:\n"
+            "- Be concise.\n"
+            "- If the question is in English, answer only in English.\n"
+            "- Include at least one exact citation label such as [Reference 1].\n"
+            "- Prefer exact menu paths or action steps when they appear in the references.\n\n"
             f"Question: {question}"
         )
         return [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_message},
         ]
+
+    def _build_repair_messages(
+        self,
+        question: str,
+        sources: list[SourceChunk],
+        draft_answer: str,
+    ) -> list[dict[str, str]]:
+        """同一ソースを使って、言語・引用制約を満たすよう回答を修正する。"""
+        context_parts: list[str] = []
+        for i, src in enumerate(sources, start=1):
+            location = src.source_file
+            if src.payload.get("sheet_name"):
+                location += f" > {src.payload['sheet_name']}"
+            if src.payload.get("cell_range"):
+                location += f" [{src.payload['cell_range']}]"
+            context_parts.append(f"[Reference {i}] (source: {location})\n{src.text}")
+        context_text = "\n---\n".join(context_parts)
+        user_message = (
+            "Rewrite the previous answer using only the same reference information.\n"
+            "Do not perform another search.\n"
+            "Fix any language mismatch, keep the answer concise, and include at least one exact citation label such as [Reference 1].\n\n"
+            f"Reference Information:\n{context_text}\n\n"
+            f"Question: {question}\n\n"
+            f"Previous Answer:\n{draft_answer}"
+        )
+        return [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_message},
+        ]
+
+    def _needs_generation_repair(
+        self,
+        question: str,
+        answer: str,
+        sources: list[SourceChunk],
+    ) -> bool:
+        """明らかな制約違反がある場合のみ、同一コンテキストで 1 回だけ再生成する。"""
+        if not sources or not answer.strip():
+            return False
+        if answer in {
+            ENGLISH_NOT_FOUND_ANSWER,
+            JAPANESE_NOT_FOUND_ANSWER,
+            ENGLISH_FALLBACK_ANSWER,
+            JAPANESE_FALLBACK_ANSWER,
+        }:
+            return False
+        if self._prefers_english_response(question) and self._looks_non_english_answer(answer):
+            return True
+        return not self._has_required_citation(answer)
+
+    def _has_required_citation(self, answer: str) -> bool:
+        """期待する [Reference N] 形式の引用が含まれているか判定する。"""
+        return bool(_CITATION_RE.search(answer))
+
+    def _looks_non_english_answer(self, answer: str) -> bool:
+        """英語質問に対して明らかに非英語の回答になっていないかを緩く判定する。"""
+        normalized = f" {answer.lower()} "
+        if _NON_ENGLISH_SCRIPT_RE.search(normalized):
+            return True
+        return any(marker in normalized for marker in _NON_ENGLISH_HINTS)
 
     def _generate_with_openai(
         self, messages: list[dict[str, str]]
@@ -493,7 +695,7 @@ class RagService:
         response = self.openai_client.chat.completions.create(
             model=self.openai_settings.chat_model,
             messages=messages,
-            temperature=0.3,
+            temperature=self.openai_settings.chat_temperature,
             extra_body=extra_body,
             timeout=LLM_TIMEOUT_SECONDS,
         )
@@ -522,6 +724,9 @@ class RagService:
                 "model": self.openai_settings.chat_model,
                 "messages": messages,
                 "think": self.openai_settings.chat_think,
+                "options": build_ollama_native_options(
+                    chat_temperature=self.openai_settings.chat_temperature,
+                ),
                 "stream": False,
             },
             timeout=LLM_TIMEOUT_SECONDS,

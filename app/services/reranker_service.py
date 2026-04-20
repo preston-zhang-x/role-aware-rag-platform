@@ -69,17 +69,24 @@ class CohereCompatibleRerankerClient:
         query: str,
         chunks: Sequence[RerankableChunk],
         top_n: int,
+        *,
+        max_tokens_per_doc: int | None = None,
     ) -> list[RerankResult]:
         """クエリとチャンクのリストを受け取り、関連度順に並べ替える。"""
         if top_n <= 0 or not chunks:
             return []
 
+        effective_max_tokens = (
+            self.max_tokens_per_doc
+            if max_tokens_per_doc is None
+            else max_tokens_per_doc
+        )
         payload = {
             "model": self.model,
             "query": query,
             "documents": [self._format_document(chunk) for chunk in chunks],
             "top_n": min(top_n, len(chunks)),
-            "max_tokens_per_doc": self.max_tokens_per_doc,
+            "max_tokens_per_doc": effective_max_tokens,
         }
 
         try:
@@ -131,16 +138,24 @@ class CohereCompatibleRerankerClient:
         """チャンクをリランカーに送信するためのテキスト形式にフォーマットする。"""
         payload = chunk.payload or {}
         lines = [
-            f"source_file: {chunk.source_file}",
-            f"chunk_index: {chunk.chunk_index}",
+            "text: |",
+            *[f"  {line}" for line in chunk.text.splitlines() or [""]],
         ]
         formula_description = payload.get("formula_description")
         if formula_description:
-            lines.append(f"formula_description: {formula_description}")
+            lines.extend(
+                [
+                    "formula_description: |",
+                    *[
+                        f"  {line}"
+                        for line in str(formula_description).splitlines() or [""]
+                    ],
+                ]
+            )
         lines.extend(
             [
-                "text: |",
-                *[f"  {line}" for line in chunk.text.splitlines() or [""]],
+                f"source_file: {chunk.source_file}",
+                f"chunk_index: {chunk.chunk_index}",
             ]
         )
         return "\n".join(lines)
