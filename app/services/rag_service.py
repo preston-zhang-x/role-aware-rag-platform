@@ -21,8 +21,8 @@ from app.core.config import get_openai_settings, get_retrieval_settings
 from app.core.model_provider import (
     build_auth_headers,
     build_chat_extra_body,
-    build_ollama_native_options,
     build_ollama_native_chat_url,
+    build_ollama_native_options,
     is_ollama_base_url,
 )
 from app.services.bm25_service import BM25Hit, get_cached_bm25_service
@@ -65,13 +65,13 @@ _NON_ENGLISH_HINTS = (
 )
 
 SYSTEM_PROMPT = (
-    "You are a retrieval assistant that answers questions using the provided reference information.\n"
-    "Use only the reference information when answering.\n"
-    "Answer in the same language as the user's question.\n"
-    "If the user's question is in English, answer only in English and do not switch to another language.\n"
-    "If the reference information does not contain the answer, say so clearly in the same language as the user's question.\n"
-    "Keep the answer concise and include the exact menu path or action steps when present in the references.\n"
-    "Always cite the source using the exact source label shown in the reference information, for example [Reference 1]."
+    "あなたは、提供された参照情報を用いて質問に回答するリトリーバルアシスタントです。\n"
+    "回答は必ず参照情報の内容のみに基づいて行ってください。\n"
+    "回答はユーザーの質問と同じ言語で行ってください。\n"
+    "ユーザーの質問が英語の場合は、必ず英語のみで回答し、他の言語に切り替えないでください。\n"
+    "参照情報に回答が含まれていない場合は、その旨をユーザーの質問と同じ言語で明確に伝えてください。\n"
+    "回答は簡潔にし、参照情報に含まれる場合は正確なメニュー経路や操作手順を必ず含めてください。\n"
+    "必ず参照情報に表示されている正確なソースラベル（例：[Reference 1]）を用いて出典を明記してください。"
 )
 
 
@@ -244,9 +244,13 @@ class RagService:
             "rerank_return_top_n",
             None,
         )
-        value = configured if configured is not None else max(
-            DEFAULT_RERANK_RETURN_TOP_N,
-            self.top_k * 3,
+        value = (
+            configured
+            if configured is not None
+            else max(
+                DEFAULT_RERANK_RETURN_TOP_N,
+                self.top_k * 3,
+            )
         )
         return min(max(value, self.top_k), self.rerank_candidate_top_k)
 
@@ -391,7 +395,9 @@ class RagService:
         source: SourceChunk,
         rerank_score: float | None,
     ) -> SourceChunk:
-        fusion_score = source.fusion_score if source.fusion_score is not None else source.score
+        fusion_score = (
+            source.fusion_score if source.fusion_score is not None else source.score
+        )
         effective_score = fusion_score if rerank_score is None else rerank_score
         return SourceChunk(
             text=source.text,
@@ -668,7 +674,9 @@ class RagService:
             JAPANESE_FALLBACK_ANSWER,
         }:
             return False
-        if self._prefers_english_response(question) and self._looks_non_english_answer(answer):
+        if self._prefers_english_response(question) and self._looks_non_english_answer(
+            answer
+        ):
             return True
         return not self._has_required_citation(answer)
 
