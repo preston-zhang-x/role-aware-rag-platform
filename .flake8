@@ -5,6 +5,7 @@ exclude =
     .agent,
     .git,
     .sisyphus,
+    .uv-cache,
     .venv,
     .pytest_cache,
     .mypy_cache,

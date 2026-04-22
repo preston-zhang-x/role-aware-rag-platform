@@ -103,11 +103,43 @@ def test_reranker_formats_documents_and_parses_results(
     assert [result.index for result in results] == [1, 0]
     assert captured["url"] == "https://gateway.example/v2/rerank"
     documents = captured["kwargs"]["json"]["documents"]
+    assert documents[0].startswith("text: |\n  plain body")
     assert "source_file: guide.md" in documents[0]
-    assert "formula_description: Excel formula summary" in documents[1]
+    assert "formula_description: |\n  Excel formula summary" in documents[1]
     assert "text: |" in documents[1]
+    assert documents[1].index("text: |") < documents[1].index("source_file: sheet.xlsx")
+    assert captured["kwargs"]["json"]["max_tokens_per_doc"] == 1024
     assert captured["kwargs"]["headers"]["Authorization"] == "Bearer secret"
     assert captured["kwargs"]["timeout"] == 4.0
+
+
+def test_reranker_respects_per_call_max_tokens(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_post(url: str, **kwargs: Any) -> FakeResponse:
+        captured["kwargs"] = kwargs
+        return FakeResponse(200, {"results": [{"index": 0, "relevance_score": 0.88}]})
+
+    monkeypatch.setattr(reranker_service_module.httpx, "post", fake_post)
+    client = CohereCompatibleRerankerClient(
+        base_url="https://gateway.example/v2",
+        api_key="secret",
+        model="rerank-v3.5",
+        max_tokens_per_doc=1024,
+    )
+
+    results = client.rerank(
+        "how to use",
+        [DummyChunk(text="body", source_file="guide.md", chunk_index=0)],
+        top_n=5,
+        max_tokens_per_doc=2048,
+    )
+
+    assert [result.index for result in results] == [0]
+    assert captured["kwargs"]["json"]["top_n"] == 1
+    assert captured["kwargs"]["json"]["max_tokens_per_doc"] == 2048
 
 
 def test_reranker_raises_transient_error_on_timeout(

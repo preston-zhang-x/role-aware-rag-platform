@@ -234,7 +234,9 @@ class TestRoleFilter:
 
         call_args = mock_openai_embed.chat.completions.create.call_args
         assert call_args.kwargs["model"]
-        assert call_args.kwargs["temperature"] == 0.3
+        assert (
+            call_args.kwargs["temperature"] == service.openai_settings.chat_temperature
+        )
         assert call_args.kwargs["extra_body"] is None
         assert call_args.kwargs["messages"][0]["role"] == "system"
         assert "finance_report.pdf" in call_args.kwargs["messages"][1]["content"]
