@@ -168,7 +168,9 @@ def call_rag_api_with_reauth(
         if exc.response.status_code != 401:
             raise
 
-    print("   🔄 Access token expired. Logging in again and retrying this question once.")
+    print(
+        "   🔄 Access token expired. Logging in again and retrying this question once."
+    )
     refreshed_token = login_as_admin(username, password)
     return call_rag_api(question, refreshed_token), refreshed_token
 
@@ -277,9 +279,9 @@ def build_unique_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
         avg_source_recall = sum(
             float(item.get("source_recall") or 0.0) for item in group
         ) / len(group)
-        avg_latency_ms = sum(float(item.get("latency_ms") or 0.0) for item in group) / len(
-            group
-        )
+        avg_latency_ms = sum(
+            float(item.get("latency_ms") or 0.0) for item in group
+        ) / len(group)
         unique_results.append(
             {
                 "group_key": group_key,

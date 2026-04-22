@@ -19,9 +19,7 @@ from script.run_ragbench_eval import build_unique_summary
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Compare two RAGBench JSON summaries."
-    )
+    parser = argparse.ArgumentParser(description="Compare two RAGBench JSON summaries.")
     parser.add_argument("--left", required=True, help="Left JSON summary path.")
     parser.add_argument("--right", required=True, help="Right JSON summary path.")
     parser.add_argument(
@@ -35,7 +33,9 @@ def parse_args() -> argparse.Namespace:
 def load_summary(path: Path) -> dict[str, Any]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if "unique_summary" not in payload or "unique_results" not in payload:
-        unique_results, unique_summary = build_unique_summary(payload.get("results", []))
+        unique_results, unique_summary = build_unique_summary(
+            payload.get("results", [])
+        )
         payload["unique_results"] = unique_results
         payload["unique_summary"] = unique_summary
     return payload
@@ -73,7 +73,9 @@ def generate_comparison_report(
     left_unique = left_summary.get("unique_summary", {})
     right_unique = right_summary.get("unique_summary", {})
 
-    shared_ids = set(build_unique_index(left_summary)) & set(build_unique_index(right_summary))
+    shared_ids = set(build_unique_index(left_summary)) & set(
+        build_unique_index(right_summary)
+    )
     left_index = build_unique_index(left_summary)
     right_index = build_unique_index(right_summary)
 
@@ -91,7 +93,9 @@ def generate_comparison_report(
             changed_rows.append(
                 {
                     "id": record_id,
-                    "question": right_item.get("question") or left_item.get("question") or "",
+                    "question": right_item.get("question")
+                    or left_item.get("question")
+                    or "",
                     "left_hit_pattern": left_item["hit_pattern"],
                     "right_hit_pattern": right_item["hit_pattern"],
                     "left_avg_f1": float(left_item["avg_answer_token_f1"]),

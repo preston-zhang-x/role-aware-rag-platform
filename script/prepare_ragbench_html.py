@@ -90,7 +90,9 @@ def split_paragraphs(text: str) -> list[str]:
 
 
 def build_document_id(text: str, prefix: str) -> str:
-    digest = hashlib.sha1(normalize_document_text(text).encode("utf-8")).hexdigest()[:12]
+    digest = hashlib.sha1(normalize_document_text(text).encode("utf-8")).hexdigest()[
+        :12
+    ]
     return f"{prefix}_{digest}"
 
 
@@ -211,8 +213,12 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Prepare RAGBench emanual documents as HTML files."
     )
-    parser.add_argument("--dataset", default=DATASET_NAME, help="Hugging Face dataset id.")
-    parser.add_argument("--subset", default=DEFAULT_SUBSET, help="Dataset subset/config.")
+    parser.add_argument(
+        "--dataset", default=DATASET_NAME, help="Hugging Face dataset id."
+    )
+    parser.add_argument(
+        "--subset", default=DEFAULT_SUBSET, help="Dataset subset/config."
+    )
     parser.add_argument("--split", default=DEFAULT_SPLIT, help="Dataset split.")
     parser.add_argument(
         "--output-root",

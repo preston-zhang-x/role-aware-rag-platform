@@ -648,7 +648,9 @@ class RagService:
         user_message = (
             "Rewrite the previous answer using only the same reference information.\n"
             "Do not perform another search.\n"
-            "Fix any language mismatch, keep the answer concise, and include at least one exact citation label such as [Reference 1].\n\n"
+            "Fix any language mismatch, keep the answer concise, "
+            "and include at least one exact citation label such as "
+            "[Reference 1].\n\n"
             f"Reference Information:\n{context_text}\n\n"
             f"Question: {question}\n\n"
             f"Previous Answer:\n{draft_answer}"

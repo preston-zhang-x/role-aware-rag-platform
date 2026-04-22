@@ -284,7 +284,10 @@ class TestGenerateUsageNone:
         second_call = mock_openai_client.chat.completions.create.call_args_list[1]
         assert first_call.kwargs["extra_body"] == {"think": False}
         assert second_call.kwargs["extra_body"] == {"think": False}
-        assert "Rewrite the previous answer" in second_call.kwargs["messages"][1]["content"]
+        assert (
+            "Rewrite the previous answer"
+            in second_call.kwargs["messages"][1]["content"]
+        )
 
 
 # ── RagResult dataclass デフォルト値テスト ────────────────────
@@ -461,7 +464,10 @@ class TestGenerationMessages:
         )
 
         assert messages[0]["content"] == SYSTEM_PROMPT
-        assert "Answer the question using only the reference information below." in messages[1]["content"]
+        assert (
+            "Answer the question using only the reference information below."
+            in messages[1]["content"]
+        )
         assert "[Reference 1] (source: docs/spec.html)" in messages[1]["content"]
 
 

@@ -6,7 +6,9 @@ from script import prepare_ragbench_html
 def test_extract_document_text_supports_string_and_dict_payloads():
     assert prepare_ragbench_html.extract_document_text("alpha") == "alpha"
     assert (
-        prepare_ragbench_html.extract_document_text({"text": "beta", "title": "ignored"})
+        prepare_ragbench_html.extract_document_text(
+            {"text": "beta", "title": "ignored"}
+        )
         == "beta"
     )
 
@@ -42,7 +44,9 @@ def test_prepare_benchmark_artifacts_deduplicates_documents_and_writes_manifest(
     )
 
     docs = sorted(summary.docs_dir.glob("*.html"))
-    manifest_lines = summary.manifest_path.read_text(encoding="utf-8").strip().splitlines()
+    manifest_lines = (
+        summary.manifest_path.read_text(encoding="utf-8").strip().splitlines()
+    )
 
     assert summary.question_count == 2
     assert summary.unique_document_count == 3
@@ -79,6 +83,6 @@ def test_prepare_benchmark_artifacts_is_stable_across_runs(tmp_path: Path):
     assert sorted(path.name for path in first.docs_dir.glob("*.html")) == sorted(
         path.name for path in second.docs_dir.glob("*.html")
     )
-    assert first.manifest_path.read_text(encoding="utf-8") == second.manifest_path.read_text(
+    assert first.manifest_path.read_text(
         encoding="utf-8"
-    )
+    ) == second.manifest_path.read_text(encoding="utf-8")
