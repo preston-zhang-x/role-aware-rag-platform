@@ -16,11 +16,19 @@ def test_retrieval_settings_loads_strategy_and_top_k(
 ) -> None:
     monkeypatch.setenv("RETRIEVAL_MODE", "vector")
     monkeypatch.setenv("TOP_K", "3")
+    monkeypatch.setenv("RERANK_CANDIDATE_TOP_K", "32")
+    monkeypatch.setenv("RERANK_RETURN_TOP_N", "12")
+    monkeypatch.setenv("RERANK_SCORE_THRESHOLD", "0.15")
+    monkeypatch.setenv("RERANK_MAX_TOKENS_PER_DOC", "2048")
 
     settings = RetrievalSettings()
 
     assert settings.retrieval_mode == "vector"
     assert settings.top_k == 3
+    assert settings.rerank_candidate_top_k == 32
+    assert settings.rerank_return_top_n == 12
+    assert settings.rerank_score_threshold == 0.15
+    assert settings.rerank_max_tokens_per_doc == 2048
 
 
 def test_retrieval_settings_defaults_to_hybrid_rerank_when_unset(
@@ -81,4 +89,6 @@ def test_settings_getters_load_from_repo_root_env_when_cwd_changes(
     assert openai_settings.openai_base_url
     assert openai_settings.embedding_model
     assert openai_settings.chat_think is False
+    assert openai_settings.chat_temperature == 0.0
     assert retrieval_settings.top_k > 0
+    assert retrieval_settings.rerank_max_tokens_per_doc > 0

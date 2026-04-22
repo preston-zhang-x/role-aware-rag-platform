@@ -57,6 +57,11 @@ def parse_args() -> argparse.Namespace:
         default=str(build_default_output_file()),
         help="Markdown report output path.",
     )
+    parser.add_argument(
+        "--json-output-file",
+        default=None,
+        help="Optional JSON summary output path.",
+    )
     return parser.parse_args()
 
 
@@ -163,7 +168,9 @@ def call_rag_api_with_reauth(
         if exc.response.status_code != 401:
             raise
 
-    print("   🔄 Access token expired. Logging in again and retrying this question once.")
+    print(
+        "   🔄 Access token expired. Logging in again and retrying this question once."
+    )
     refreshed_token = login_as_admin(username, password)
     return call_rag_api(question, refreshed_token), refreshed_token
 
@@ -238,6 +245,128 @@ def build_error_breakdown(results: list[dict[str, Any]]) -> dict[str, int]:
     return dict(counter)
 
 
+def build_unique_group_key(result: dict[str, Any]) -> str:
+    record_id = str(result.get("id") or "").strip()
+    if record_id:
+        return f"id:{record_id}"
+    return f"question:{normalize_text(str(result.get('question') or ''))}"
+
+
+def build_unique_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for result in results:
+        grouped.setdefault(build_unique_group_key(result), []).append(result)
+
+    unique_results: list[dict[str, Any]] = []
+    for group_key, group in grouped.items():
+        hit_values = [bool(item.get("hit")) for item in group]
+        source_hit_values = [bool(item.get("source_hit")) for item in group]
+        first_sources = [
+            normalize_source_path(str(item.get("first_source_file") or ""))
+            for item in group
+        ]
+        source_orders = [
+            tuple(
+                normalize_source_path(str(path))
+                for path in item.get("source_files", [])
+                if path
+            )
+            for item in group
+        ]
+        avg_answer_token_f1 = sum(
+            float(item.get("answer_token_f1") or 0.0) for item in group
+        ) / len(group)
+        avg_source_recall = sum(
+            float(item.get("source_recall") or 0.0) for item in group
+        ) / len(group)
+        avg_latency_ms = sum(
+            float(item.get("latency_ms") or 0.0) for item in group
+        ) / len(group)
+        unique_results.append(
+            {
+                "group_key": group_key,
+                "id": group[0].get("id"),
+                "question": group[0].get("question"),
+                "runs": len(group),
+                "hit_pattern": "".join("T" if hit else "F" for hit in hit_values),
+                "source_hit_pattern": "".join(
+                    "T" if hit else "F" for hit in source_hit_values
+                ),
+                "any_hit": any(hit_values),
+                "both_hit": all(hit_values),
+                "hit_flip": len(set(hit_values)) > 1,
+                "source_hit_flip": len(set(source_hit_values)) > 1,
+                "first_source_flip": len(set(first_sources)) > 1,
+                "source_order_flip": len(set(source_orders)) > 1,
+                "avg_answer_token_f1": avg_answer_token_f1,
+                "avg_source_recall": avg_source_recall,
+                "avg_latency_ms": avg_latency_ms,
+            }
+        )
+
+    unique_results.sort(
+        key=lambda item: (
+            str(item.get("id") or ""),
+            str(item.get("question") or ""),
+        )
+    )
+    return unique_results
+
+
+def build_unique_summary(
+    results: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    unique_results = build_unique_results(results)
+    total = len(unique_results)
+    summary = {
+        "unique_total": total,
+        "unique_any_hit": sum(1 for item in unique_results if item["any_hit"]),
+        "unique_both_hit": sum(1 for item in unique_results if item["both_hit"]),
+        "mode_internal_hit_flip_count": sum(
+            1 for item in unique_results if item["hit_flip"]
+        ),
+        "mode_internal_source_hit_flip_count": sum(
+            1 for item in unique_results if item["source_hit_flip"]
+        ),
+        "mode_internal_first_source_flip_count": sum(
+            1 for item in unique_results if item["first_source_flip"]
+        ),
+        "mode_internal_source_order_flip_count": sum(
+            1 for item in unique_results if item["source_order_flip"]
+        ),
+        "avg_unique_source_recall": (
+            sum(item["avg_source_recall"] for item in unique_results) / total
+            if total
+            else 0.0
+        ),
+        "avg_unique_answer_token_f1": (
+            sum(item["avg_answer_token_f1"] for item in unique_results) / total
+            if total
+            else 0.0
+        ),
+        "avg_unique_latency_ms": (
+            sum(item["avg_latency_ms"] for item in unique_results) / total
+            if total
+            else 0.0
+        ),
+    }
+    return unique_results, summary
+
+
+def format_source_trace(source_files: list[str]) -> str:
+    if not source_files:
+        return "-"
+    return ", ".join(source_files)
+
+
+def save_summary_json(summary: dict[str, Any], output_path: Path) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
 def run_eval(manifest_path: Path = MANIFEST_FILE) -> dict[str, Any]:
     username, password = get_admin_credentials()
     access_token = login_as_admin(username, password)
@@ -298,6 +427,11 @@ def run_eval(manifest_path: Path = MANIFEST_FILE) -> dict[str, Any]:
                     "executed_as": EXECUTED_AS_ROLE,
                     "answer": answer,
                     "sources_count": len(sources),
+                    "source_files": [
+                        str(source.get("source_file"))
+                        for source in sources
+                        if source.get("source_file") is not None
+                    ],
                     "first_source_file": (
                         sources[0].get("source_file") if sources else None
                     ),
@@ -328,6 +462,7 @@ def run_eval(manifest_path: Path = MANIFEST_FILE) -> dict[str, Any]:
                     "executed_as": EXECUTED_AS_ROLE,
                     "answer": "",
                     "sources_count": 0,
+                    "source_files": [],
                     "first_source_file": None,
                     "source_hit": False,
                     "source_recall": 0.0,
@@ -351,6 +486,7 @@ def run_eval(manifest_path: Path = MANIFEST_FILE) -> dict[str, Any]:
                     "executed_as": EXECUTED_AS_ROLE,
                     "answer": "",
                     "sources_count": 0,
+                    "source_files": [],
                     "first_source_file": None,
                     "source_hit": False,
                     "source_recall": 0.0,
@@ -363,6 +499,7 @@ def run_eval(manifest_path: Path = MANIFEST_FILE) -> dict[str, Any]:
             )
 
     total = len(records)
+    unique_results, unique_summary = build_unique_summary(results)
     summary = {
         "total": total,
         "hit": hit_count,
@@ -375,6 +512,8 @@ def run_eval(manifest_path: Path = MANIFEST_FILE) -> dict[str, Any]:
         "execution_mode": EXECUTION_MODE,
         "executed_as": EXECUTED_AS_ROLE,
         "results": results,
+        "unique_results": unique_results,
+        "unique_summary": unique_summary,
         "error_breakdown": build_error_breakdown(results),
         "retrieval_mode": get_retrieval_settings().retrieval_mode,
     }
@@ -387,12 +526,21 @@ def run_eval(manifest_path: Path = MANIFEST_FILE) -> dict[str, Any]:
         f"avg_source_recall={summary['avg_source_recall']:.3f} "
         f"avg_answer_token_f1={summary['avg_answer_token_f1']:.3f}"
     )
+    print(
+        "   "
+        f"unique_any_hit={unique_summary['unique_any_hit']}/"
+        f"{unique_summary['unique_total']} "
+        f"unique_both_hit={unique_summary['unique_both_hit']}/"
+        f"{unique_summary['unique_total']} "
+        f"hit_flip={unique_summary['mode_internal_hit_flip_count']}"
+    )
 
     return summary
 
 
 def generate_report(summary: dict[str, Any]) -> str:
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    unique_summary = summary.get("unique_summary", {})
     lines = [
         "# RAGBench Emanual 評価レポート",
         "",
@@ -415,6 +563,26 @@ def generate_report(summary: dict[str, Any]) -> str:
         f"| Source Hit Rate | {summary['source_hit_rate']:.1f}% |",
         f"| Avg Source Recall | {summary['avg_source_recall']:.3f} |",
         f"| Avg Answer Token F1 | {summary['avg_answer_token_f1']:.3f} |",
+        "",
+        "## Unique Question Summary",
+        "",
+        "| 指標 | 値 |",
+        "|------|-----|",
+        f"| Unique Questions | {unique_summary.get('unique_total', 0)} |",
+        f"| unique_any_hit | {unique_summary.get('unique_any_hit', 0)} |",
+        f"| unique_both_hit | {unique_summary.get('unique_both_hit', 0)} |",
+        f"| Avg Unique Source Recall | {unique_summary.get('avg_unique_source_recall', 0.0):.3f} |",
+        f"| Avg Unique Answer Token F1 | {unique_summary.get('avg_unique_answer_token_f1', 0.0):.3f} |",
+        f"| Avg Unique Latency ms | {unique_summary.get('avg_unique_latency_ms', 0.0):.1f} |",
+        "",
+        "## Duplicate Stability",
+        "",
+        "| 指標 | 値 |",
+        "|------|-----|",
+        f"| Mode Internal Hit Flip Count | {unique_summary.get('mode_internal_hit_flip_count', 0)} |",
+        f"| Mode Internal Source Hit Flip Count | {unique_summary.get('mode_internal_source_hit_flip_count', 0)} |",
+        f"| Mode Internal First Source Flip Count | {unique_summary.get('mode_internal_first_source_flip_count', 0)} |",
+        f"| Mode Internal Source Order Flip Count | {unique_summary.get('mode_internal_source_order_flip_count', 0)} |",
         "",
         "## 詳細結果",
         "",
@@ -461,6 +629,9 @@ def generate_report(summary: dict[str, Any]) -> str:
         lines.append(f"- **Answer Token F1**: {result['answer_token_f1']:.3f}")
         lines.append(f"- **First Source**: {result['first_source_file'] or '-'}")
         lines.append(
+            f"- **Source Order**: {format_source_trace(result.get('source_files', []))}"
+        )
+        lines.append(
             "- **Expected Sources**: "
             + (", ".join(result["expected_source_files"]) or "-")
         )
@@ -482,6 +653,7 @@ def main() -> None:
     args = parse_args()
     manifest_path = Path(args.manifest)
     output_file = Path(args.output_file)
+    json_output_file = Path(args.json_output_file) if args.json_output_file else None
 
     print("RAGBench 評価を開始します...")
     print(f"   Manifest: {manifest_path}")
@@ -499,6 +671,9 @@ def main() -> None:
     output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.write_text(report, encoding="utf-8")
     print(f"\n レポートを保存しました: {output_file}")
+    if json_output_file is not None:
+        save_summary_json(summary, json_output_file)
+        print(f" JSON サマリーを保存しました: {json_output_file}")
 
 
 if __name__ == "__main__":

@@ -17,6 +17,7 @@ from app.services.rag_service import (
     ENGLISH_NOT_FOUND_ANSWER,
     RagResult,
     RagService,
+    SYSTEM_PROMPT,
     SourceChunk,
 )
 from app.services.reranker_service import RerankResult
@@ -246,6 +247,7 @@ class TestGenerateUsageNone:
         assert call_args.args[0] == "http://localhost:11434/api/chat"
         assert call_args.kwargs["json"]["model"] == service.openai_settings.chat_model
         assert call_args.kwargs["json"]["think"] is False
+        assert call_args.kwargs["json"]["options"] == {"temperature": 0.0}
         assert call_args.kwargs["json"]["stream"] is False
         assert call_args.kwargs["headers"]["Authorization"] == "Bearer ollama"
 
@@ -277,10 +279,15 @@ class TestGenerateUsageNone:
         )
 
         assert result[0] == "fallback ok"
-        assert mock_openai_client.chat.completions.create.call_count == 1
-        assert mock_openai_client.chat.completions.create.call_args.kwargs[
-            "extra_body"
-        ] == {"think": False}
+        assert mock_openai_client.chat.completions.create.call_count == 2
+        first_call = mock_openai_client.chat.completions.create.call_args_list[0]
+        second_call = mock_openai_client.chat.completions.create.call_args_list[1]
+        assert first_call.kwargs["extra_body"] == {"think": False}
+        assert second_call.kwargs["extra_body"] == {"think": False}
+        assert (
+            "Rewrite the previous answer"
+            in second_call.kwargs["messages"][1]["content"]
+        )
 
 
 # ── RagResult dataclass デフォルト値テスト ────────────────────
@@ -441,7 +448,7 @@ class TestAskWithMetadata:
 
 
 class TestGenerationMessages:
-    def test_generation_messages_use_language_neutral_prompt(
+    def test_generation_messages_include_current_system_prompt(
         self, mock_openai_client: MagicMock
     ) -> None:
         service, _ = _build_service(mock_openai_client)
@@ -456,8 +463,11 @@ class TestGenerationMessages:
             ],
         )
 
-        assert "same language as the user's question" in messages[0]["content"]
-        assert "Answer the question using only the reference information below." in messages[1]["content"]
+        assert messages[0]["content"] == SYSTEM_PROMPT
+        assert (
+            "Answer the question using only the reference information below."
+            in messages[1]["content"]
+        )
         assert "[Reference 1] (source: docs/spec.html)" in messages[1]["content"]
 
 
@@ -573,6 +583,65 @@ class TestRerankEdgeCases:
         assert result[0].text == "b"
         assert result[1].text == "a"
         assert result[2].text == "c"
+
+    def test_rerank_return_top_n_can_exceed_top_k(
+        self, mock_openai_client: MagicMock
+    ) -> None:
+        reranker = MagicMock()
+        reranker.rerank.return_value = [RerankResult(index=2, relevance_score=0.99)]
+        service = self._make_rerank_service(mock_openai_client, reranker, top_k=2)
+
+        sources = [
+            SourceChunk(text="a", source_file="a.md", score=0.9, fusion_score=0.9),
+            SourceChunk(text="b", source_file="b.md", score=0.8, fusion_score=0.8),
+            SourceChunk(text="c", source_file="c.md", score=0.7, fusion_score=0.7),
+        ]
+
+        result = service._rerank_sources("q", sources)
+
+        assert service.rerank_return_top_n > service.top_k
+        assert len(result) == 3
+        assert result[0].text == "c"
+        assert result[0].rerank_score == 0.99
+        assert reranker.rerank.call_args.kwargs["top_n"] == service.rerank_return_top_n
+
+    def test_finalize_reranked_sources_ignores_rrf_threshold_after_success(
+        self, mock_openai_client: MagicMock
+    ) -> None:
+        reranker = MagicMock()
+        reranker.rerank.return_value = [RerankResult(index=1, relevance_score=0.92)]
+        service = self._make_rerank_service(mock_openai_client, reranker, top_k=1)
+        service.score_threshold = 0.95
+
+        hybrid_sources = [
+            SourceChunk(text="a", source_file="a.md", score=0.2, fusion_score=0.2),
+            SourceChunk(text="b", source_file="b.md", score=0.1, fusion_score=0.1),
+        ]
+
+        result = service._finalize_reranked_sources("q", hybrid_sources)
+
+        assert [chunk.source_file for chunk in result] == ["b.md"]
+        assert result[0].rerank_score == 0.92
+
+    def test_finalize_reranked_sources_filters_only_by_rerank_score_when_configured(
+        self, mock_openai_client: MagicMock
+    ) -> None:
+        reranker = MagicMock()
+        reranker.rerank.return_value = [
+            RerankResult(index=1, relevance_score=0.9),
+            RerankResult(index=0, relevance_score=0.4),
+        ]
+        service = self._make_rerank_service(mock_openai_client, reranker, top_k=2)
+        service.rerank_score_threshold = 0.5
+
+        hybrid_sources = [
+            SourceChunk(text="a", source_file="a.md", score=0.9, fusion_score=0.9),
+            SourceChunk(text="b", source_file="b.md", score=0.8, fusion_score=0.8),
+        ]
+
+        result = service._finalize_reranked_sources("q", hybrid_sources)
+
+        assert [chunk.source_file for chunk in result] == ["b.md"]
 
 
 # ── _filter_by_score テスト ──────────────────────────────────

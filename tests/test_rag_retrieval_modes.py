@@ -55,12 +55,15 @@ class FakeRerankerClient:
         query: str,
         chunks: list[Any],
         top_n: int,
+        *,
+        max_tokens_per_doc: int | None = None,
     ) -> list[RerankResult]:
         self.calls.append(
             {
                 "query": query,
                 "chunks": list(chunks),
                 "top_n": top_n,
+                "max_tokens_per_doc": max_tokens_per_doc,
             }
         )
         if self.error is not None:
@@ -230,8 +233,11 @@ def test_hybrid_rerank_reorders_hybrid_results(mock_openai_client: MagicMock) ->
     sources = service._retrieve_sources("beta", user_roles=["staff"])
 
     assert [source.source_file for source in sources] == ["alpha.md", "beta.md"]
-    assert reranker_client.calls[0]["top_n"] == 2
+    assert reranker_client.calls[0]["top_n"] == service.rerank_return_top_n
     assert len(reranker_client.calls[0]["chunks"]) == 3
+    assert reranker_client.calls[0]["max_tokens_per_doc"] == (
+        service.rerank_max_tokens_per_doc
+    )
 
 
 def test_hybrid_rerank_falls_back_to_hybrid_on_transient_error(
@@ -252,6 +258,36 @@ def test_hybrid_rerank_falls_back_to_hybrid_on_transient_error(
     sources = service._retrieve_sources("beta", user_roles=["staff"])
 
     assert [source.source_file for source in sources] == ["beta.md", "alpha.md"]
+
+
+def test_hybrid_and_hybrid_rerank_use_different_candidate_budgets(
+    mock_openai_client: MagicMock,
+) -> None:
+    hybrid_service, hybrid_wrapper, hybrid_bm25 = _build_service(
+        retrieval_mode="hybrid",
+        mock_openai_client=mock_openai_client,
+        vector_points=_vector_points(),
+        bm25_hits=_bm25_hits(),
+        top_k=5,
+    )
+    rerank_service, rerank_wrapper, rerank_bm25 = _build_service(
+        retrieval_mode="hybrid_rerank",
+        mock_openai_client=mock_openai_client,
+        vector_points=_vector_points(),
+        bm25_hits=_bm25_hits(),
+        reranker_client=FakeRerankerClient(results=[]),
+        top_k=5,
+    )
+
+    hybrid_service._retrieve_sources("budget", user_roles=["staff"])
+    rerank_service._retrieve_sources("budget", user_roles=["staff"])
+
+    assert hybrid_service.candidate_top_k == 20
+    assert rerank_service.rerank_candidate_top_k == 40
+    assert hybrid_wrapper.client.query_points.call_args.kwargs["limit"] == 20
+    assert rerank_wrapper.client.query_points.call_args.kwargs["limit"] == 40
+    assert hybrid_bm25.search_calls == [("budget", 20)]
+    assert rerank_bm25.search_calls == [("budget", 40)]
 
 
 def test_hybrid_rerank_requires_reranker_configuration(

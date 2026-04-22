@@ -1,6 +1,7 @@
 from app.core.model_provider import (
     build_auth_headers,
     build_chat_extra_body,
+    build_ollama_native_options,
     build_models_url,
     build_ollama_native_chat_url,
     is_ollama_base_url,
@@ -52,6 +53,12 @@ def test_build_chat_extra_body_only_for_ollama() -> None:
         )
         is None
     )
+
+
+def test_build_ollama_native_options_uses_temperature() -> None:
+    assert build_ollama_native_options(chat_temperature=0.0) == {"temperature": 0.0}
+    assert build_ollama_native_options(chat_temperature=0.2) == {"temperature": 0.2}
+    assert build_ollama_native_options(chat_temperature=None) is None
     assert (
         build_chat_extra_body(
             base_url="http://localhost:11434/v1",
