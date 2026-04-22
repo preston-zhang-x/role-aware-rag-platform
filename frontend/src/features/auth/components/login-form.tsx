@@ -84,7 +84,7 @@ export function LoginForm() {
         </Badge>
         <CardTitle className="text-2xl">ログイン</CardTitle>
         <CardDescription>
-          データベースに登録済みのユーザー名とパスワードを入力してください。
+          ユーザー名とパスワードを入力してください。
         </CardDescription>
       </CardHeader>
 
@@ -144,7 +144,7 @@ export function LoginForm() {
               credentials.password.trim() === ""
             }
           >
-            {loginMutation.isPending ? "ログイン中..." : "ワークスペースへ進む"}
+            {loginMutation.isPending ? "ログイン中..." : "ログイン"}
             <ArrowRight className="size-4" />
           </Button>
         </form>

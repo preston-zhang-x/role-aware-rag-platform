@@ -17,6 +17,7 @@ from app.services.rag_service import (
     ENGLISH_NOT_FOUND_ANSWER,
     RagResult,
     RagService,
+    SYSTEM_PROMPT,
     SourceChunk,
 )
 from app.services.reranker_service import RerankResult
@@ -444,7 +445,7 @@ class TestAskWithMetadata:
 
 
 class TestGenerationMessages:
-    def test_generation_messages_use_language_neutral_prompt(
+    def test_generation_messages_include_current_system_prompt(
         self, mock_openai_client: MagicMock
     ) -> None:
         service, _ = _build_service(mock_openai_client)
@@ -459,7 +460,7 @@ class TestGenerationMessages:
             ],
         )
 
-        assert "same language as the user's question" in messages[0]["content"]
+        assert messages[0]["content"] == SYSTEM_PROMPT
         assert "Answer the question using only the reference information below." in messages[1]["content"]
         assert "[Reference 1] (source: docs/spec.html)" in messages[1]["content"]
 
