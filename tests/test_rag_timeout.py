@@ -163,7 +163,7 @@ class TestLLMTimeoutFallback:
         assert result.answer == FALLBACK_ANSWER
         assert len(result.sources) == 1
         assert result.sources[0].source_file == "test.pdf"
-        assert result.latency_ms == 0.0
+        assert result.latency_ms >= 0.0
         assert result.total_tokens == 0
         assert result.prompt_tokens == 0
         assert result.completion_tokens == 0

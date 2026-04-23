@@ -436,6 +436,50 @@ class TestAskWithMetadata:
         assert result.completion_tokens == 50
         assert result.total_tokens == 150
 
+    def test_ask_latency_uses_total_request_time(
+        self, mock_openai_client: MagicMock
+    ) -> None:
+        service, _ = _build_service(mock_openai_client)
+        sources = [SourceChunk(text="chunk", source_file="doc.md", score=0.9)]
+
+        with (
+            patch.object(service, "_retrieve_sources", return_value=sources),
+            patch.object(
+                service,
+                "_generate",
+                return_value=("回答", 4500.0, 100, 50, 150),
+            ),
+            patch(
+                "app.services.rag_service.time.perf_counter",
+                side_effect=[100.0, 110.25],
+            ),
+        ):
+            result = service.ask("質問", user_roles=["staff"])
+
+        assert result.answer == "回答"
+        assert result.latency_ms == 10250.0
+        assert result.prompt_tokens == 100
+        assert result.completion_tokens == 50
+        assert result.total_tokens == 150
+
+    def test_ask_without_sources_still_tracks_retrieval_latency(
+        self, mock_openai_client: MagicMock
+    ) -> None:
+        service, _ = _build_service(mock_openai_client)
+
+        with (
+            patch.object(service, "_retrieve_sources", return_value=[]),
+            patch(
+                "app.services.rag_service.time.perf_counter",
+                side_effect=[5.0, 8.4],
+            ),
+        ):
+            result = service.ask("What is the access token type?", user_roles=["staff"])
+
+        assert result.answer == ENGLISH_NOT_FOUND_ANSWER
+        assert result.sources == []
+        assert result.latency_ms == pytest.approx(3400.0)
+
     def test_ask_without_sources_returns_english_message_for_english_question(
         self, mock_openai_client: MagicMock
     ) -> None:

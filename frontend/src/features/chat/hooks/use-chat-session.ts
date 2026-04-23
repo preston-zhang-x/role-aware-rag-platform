@@ -36,6 +36,10 @@ function createAssistantMessage(): ChatAssistantMessage {
   }
 }
 
+function getNowMs() {
+  return globalThis.performance?.now?.() ?? Date.now()
+}
+
 function replaceAssistantMessage(
   messages: ChatMessage[],
   messageId: string,
@@ -83,6 +87,7 @@ export function useChatSession() {
       return
     }
 
+    const startedAtMs = getNowMs()
     const userMessage = createUserMessage(trimmedQuestion)
     const assistantMessage = createAssistantMessage()
 
@@ -95,13 +100,17 @@ export function useChatSession() {
       const response = await askQuestionMutation.mutateAsync({
         question: trimmedQuestion,
       })
+      const observedLatencyMs = Math.max(0, getNowMs() - startedAtMs)
 
       setMessages((current) =>
         replaceAssistantMessage(current, assistantMessage.id, {
           status: "success",
           answer: response.answer,
           sources: response.sources,
-          metadata: response.metadata,
+          metadata: {
+            ...response.metadata,
+            display_latency_ms: observedLatencyMs,
+          },
           errorMessage: undefined,
         })
       )
