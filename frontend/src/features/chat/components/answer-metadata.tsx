@@ -21,6 +21,10 @@ function formatNumber(value: number) {
   return new Intl.NumberFormat("ja-JP").format(value)
 }
 
+function getDisplayLatency(metadata: AskQuestionMetadata) {
+  return metadata.display_latency_ms ?? metadata.latency_ms
+}
+
 export function AnswerMetadata({ metadata, isLoading = false }: AnswerMetadataProps) {
   if (isLoading) {
     return (
@@ -42,7 +46,7 @@ export function AnswerMetadata({ metadata, isLoading = false }: AnswerMetadataPr
   const items = [
     {
       label: "Latency",
-      value: formatLatency(metadata.latency_ms),
+      value: formatLatency(getDisplayLatency(metadata)),
       icon: Gauge,
     },
     {

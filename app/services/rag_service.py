@@ -158,20 +158,26 @@ class RagService:
         """
         RAG のメインメソッド。質問を受け取り、回答を返す。
         """
+        start = time.perf_counter()
         sources = self._retrieve_sources(question, user_roles)
         if not sources:
             return RagResult(
                 answer=self._build_not_found_answer(question),
                 sources=[],
+                latency_ms=(time.perf_counter() - start) * 1000,
             )
         # 4. Prompt を組み立てて LLM に投げる（Generation）
-        answer, latency_ms, prompt_tokens, completion_tokens, total_tokens = (
-            self._generate(question, sources)
-        )
+        (
+            answer,
+            _generation_latency_ms,
+            prompt_tokens,
+            completion_tokens,
+            total_tokens,
+        ) = self._generate(question, sources)
         return RagResult(
             answer=answer,
             sources=sources,
-            latency_ms=latency_ms,
+            latency_ms=(time.perf_counter() - start) * 1000,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             total_tokens=total_tokens,
