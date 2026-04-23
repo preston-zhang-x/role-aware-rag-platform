@@ -12,7 +12,9 @@ export type AskQuestionResponse =
 
 export type AskQuestionSource = AskQuestionResponse["sources"][number]
 
-export type AskQuestionMetadata = AskQuestionResponse["metadata"]
+export type AskQuestionMetadata = AskQuestionResponse["metadata"] & {
+  display_latency_ms?: number
+}
 
 export type ChatUserMessage = {
   id: string
