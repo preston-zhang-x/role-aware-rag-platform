@@ -220,6 +220,44 @@ def table_escape_excel(tmp_path) -> Path:
 
 
 @pytest.fixture
+def kv_label_punctuation_excel(tmp_path) -> Path:
+    """キー末尾に区切り記号が含まれる Excel。"""
+    file_path = tmp_path / "kv_label_punctuation.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    assert ws is not None
+    ws.title = "表紙"
+
+    ws["A1"] = "作成日："
+    ws["B1"] = "2026-03-29"
+    ws["A2"] = "作成者:"
+    ws["B2"] = "張小鵬"
+
+    wb.save(file_path)
+    wb.close()
+    return file_path
+
+
+@pytest.fixture
+def non_heading_text_excel(tmp_path) -> Path:
+    """見出しにしない単独セル行を含む Excel。"""
+    file_path = tmp_path / "non_heading_text.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    assert ws is not None
+    ws.title = "フロー"
+
+    ws["A1"] = "Client"
+    ws["A2"] = "-> /api/v1/rag/ask"
+    ws["A3"] = "with_payload=True"
+    ws["A4"] = "source_file"
+
+    wb.save(file_path)
+    wb.close()
+    return file_path
+
+
+@pytest.fixture
 def merged_title_excel(tmp_path) -> Path:
     """2 行結合タイトルが 1 回だけ見出し化される Excel"""
     file_path = tmp_path / "merged_title.xlsx"
@@ -593,6 +631,16 @@ class TestHeuristicScan:
         assert "- **管理番号:** PRJ-001" in result.text
         assert "| プロジェクト名 |" not in result.text
 
+    def test_kv_label_trailing_punctuation_is_normalized(
+        self, parser, kv_label_punctuation_excel
+    ):
+        """キー末尾のコロンを重複させずに箇条書きへ変換すること"""
+        result = parser.parse(str(kv_label_punctuation_excel))
+        assert "- **作成日:** 2026-03-29" in result.text
+        assert "- **作成者:** 張小鵬" in result.text
+        assert "作成日：:**" not in result.text
+        assert "作成者::**" not in result.text
+
     def test_long_merged_text_kept_as_paragraph(self, parser, semantic_text_excel):
         """長文の単一セル行は見出しではなく段落として出力されること"""
         result = parser.parse(str(semantic_text_excel))
@@ -603,6 +651,19 @@ class TestHeuristicScan:
             not in result.text
         )
         assert "## 補足:" not in result.text
+
+    def test_flow_and_metadata_like_text_not_promoted_to_heading(
+        self, parser, non_heading_text_excel
+    ):
+        """矢印行や設定キーだけの行は見出しにしないこと"""
+        result = parser.parse(str(non_heading_text_excel))
+        assert "## Client" in result.text
+        assert "## -> /api/v1/rag/ask" not in result.text
+        assert "## with_payload=True" not in result.text
+        assert "## source_file" not in result.text
+        assert "-> /api/v1/rag/ask" in result.text
+        assert "with_payload=True" in result.text
+        assert "source_file" in result.text
 
     def test_table_trimmed_to_used_columns(self, parser, wide_sheet_table_excel):
         """テーブルはシート全体ではなくブロックの実列数で出力されること"""

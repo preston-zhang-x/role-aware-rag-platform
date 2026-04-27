@@ -73,6 +73,7 @@ class JapaneseExcelParser(BaseParser):
     MAX_HEADING_LENGTH = 48  # 見出しとして扱うテキストの最大文字数
     MIN_TABLE_ROWS = 2  # テーブルと判定するための最小行数
     MAX_FORM_ROW_CELLS = 10  # KV形式行として扱う最大セル数
+    MIN_HEADING_LENGTH = 2
     REPEATED_WIDE_LABEL_MIN_SPAN = 4
     MIN_SHARED_TABLE_COLUMNS = 3
     TWO_ROW_TABLE_SHARED_DENSITY = 0.9
@@ -80,6 +81,16 @@ class JapaneseExcelParser(BaseParser):
     LEADING_CONTEXT_MIN_CELLS = 5
     LEADING_CONTEXT_MIN_SPAN = 3
     MAX_KV_KEY_COL_SPAN = 2
+    KV_LABEL_TRAILING_CHARS = ":："
+    NON_HEADING_PREFIXES = ("->", "→", "=>")
+    NON_HEADING_EXACT_TEXTS = {
+        "with_payload=True",
+        "with_vectors=False",
+        "source_file",
+        "source_key",
+        "allowed_roles",
+        "chunk_index",
+    }
     NOISE_HEADING_PATTERN = re.compile(
         r"^[\s()\[\]{}0-9０-９.．-]+$"
     )  # ノイズ見出しパターン（進捗番号など）
@@ -243,12 +254,28 @@ class JapaneseExcelParser(BaseParser):
         max_col = ws_cached.max_column
         grid: list[list[str]] = [["" for _ in range(max_col)] for _ in range(max_row)]
 
-        # 先に全セルを読み込んでから、結合セルの従属セルを空に戻す。
-        for row_idx in range(1, max_row + 1):
-            for col_idx in range(1, max_col + 1):
-                grid[row_idx - 1][col_idx - 1] = self._read_cell_value(
-                    ws_cached.cell(row=row_idx, column=col_idx),
-                    ws_formula.cell(row=row_idx, column=col_idx),
+        # 表示値と数式を同じ範囲で読み、後段で結合セルの従属セルを空に戻す。
+        cached_rows = ws_cached.iter_rows(
+            min_row=1,
+            max_row=max_row,
+            min_col=1,
+            max_col=max_col,
+        )
+        formula_rows = ws_formula.iter_rows(
+            min_row=1,
+            max_row=max_row,
+            min_col=1,
+            max_col=max_col,
+        )
+        for row_idx, (cached_row, formula_row) in enumerate(
+            zip(cached_rows, formula_rows, strict=True)
+        ):
+            for col_idx, (cached_cell, formula_cell) in enumerate(
+                zip(cached_row, formula_row, strict=True)
+            ):
+                grid[row_idx][col_idx] = self._read_cell_value(
+                    cached_cell,
+                    formula_cell,
                     warnings,
                 )
 
@@ -577,9 +604,16 @@ class JapaneseExcelParser(BaseParser):
         長文や注記は段落へ降格する。
         """
         normalized = text.strip()
-        if not normalized or len(normalized) > self.MAX_HEADING_LENGTH:
+        if (
+            len(normalized) < self.MIN_HEADING_LENGTH
+            or len(normalized) > self.MAX_HEADING_LENGTH
+        ):
             return False
         if self.NOISE_HEADING_PATTERN.fullmatch(normalized):
+            return False
+        if normalized in self.NON_HEADING_EXACT_TEXTS:
+            return False
+        if normalized.startswith(self.NON_HEADING_PREFIXES):
             return False
         if any(token in normalized for token in ("。", "<br>", r"\|", ":", "：")):
             return False
@@ -607,7 +641,8 @@ class JapaneseExcelParser(BaseParser):
         i = 0
         while i < len(values):
             if i + 1 < len(values):
-                parts.append(f"- **{values[i]}:** {values[i + 1]}")
+                label = self._clean_kv_label(values[i])
+                parts.append(f"- **{label}:** {values[i + 1]}")
                 i += 2
                 continue
             parts.append(f"- {values[i]}")
@@ -620,6 +655,11 @@ class JapaneseExcelParser(BaseParser):
             cell_range=f"row {row.row_index + 1}",
         )
         return "\n".join(parts), chunk
+
+    def _clean_kv_label(self, label: str) -> str:
+        """キー・値形式のラベルから末尾の区切り記号を取り除く。"""
+        cleaned = label.strip().rstrip(self.KV_LABEL_TRAILING_CHARS).strip()
+        return cleaned or label
 
     def _should_drop_leading_context(
         self,
