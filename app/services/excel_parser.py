@@ -7,6 +7,7 @@
 """
 
 import re
+from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -32,7 +33,7 @@ class RowCell:
     """行内の単一セル情報を表現する不変オブジェクト。
 
     Attributes:
-        text: セルの内容テキスト（マークダウンエスケープ済み）
+        text: セルの内容テキスト（テキスト/KV用にマークダウンエスケープ済み）
         start_col: セルの開始列インデックス（0ベース）
         end_col: セルの終了列インデックス（0ベース）
     """
@@ -57,8 +58,8 @@ class RowProfile:
     """
 
     row_index: int
-    raw_row: list[str]
-    cells: list[RowCell]
+    raw_row: tuple[str, ...]
+    cells: tuple[RowCell, ...]
 
 
 class JapaneseExcelParser(BaseParser):
@@ -71,6 +72,13 @@ class JapaneseExcelParser(BaseParser):
     MAX_HEADING_LENGTH = 48  # 見出しとして扱うテキストの最大文字数
     MIN_TABLE_ROWS = 2  # テーブルと判定するための最小行数
     MAX_FORM_ROW_CELLS = 10  # KV形式行として扱う最大セル数
+    REPEATED_WIDE_LABEL_MIN_SPAN = 4
+    MIN_SHARED_TABLE_COLUMNS = 3
+    TWO_ROW_TABLE_SHARED_DENSITY = 0.9
+    MIN_STRUCTURED_MERGED_COLUMNS = 4
+    LEADING_CONTEXT_MIN_CELLS = 5
+    LEADING_CONTEXT_MIN_SPAN = 3
+    MAX_KV_KEY_COL_SPAN = 2
     NOISE_HEADING_PATTERN = re.compile(
         r"^[\s()\[\]{}0-9０-９.．-]+$"
     )  # ノイズ見出しパターン（進捗番号など）
@@ -81,9 +89,8 @@ class JapaneseExcelParser(BaseParser):
         初期化メソッド。
 
         Args:
-            density_threshold: 行密度の閾値（0.0～1.0）。
-                これを超えるとテーブル行、下回るとKV行と判定。
-                デフォルト 0.5 = 50%以上の列にデータがあればテーブル扱い。
+            density_threshold: 後方互換のために残している旧設定。
+                現在のテーブル判定は列位置の揃い方を優先する。
         """
         self.density_threshold = density_threshold
 
@@ -114,17 +121,19 @@ class JapaneseExcelParser(BaseParser):
         all_warnings: list[str] = []
         full_text = ""
 
-        # ── 公式の二重読み取り战略 ──
-        # data_only=True:  キャッシュされた計算結果を読む（ユーザーに見える値）
-        # data_only=False: 数式そのものを読む（元の入力式）
-        # この二重読み取りにより、キャッシュ古い場合でも数式が保持される
-        try:
-            wb_cached = openpyxl.load_workbook(file_path, data_only=True)
-            wb_formula = openpyxl.load_workbook(file_path, data_only=False)
-        except Exception as exc:
-            raise ParseError(f"Excelファイルの読み込みに失敗: {exc}", file_path)
+        with ExitStack() as stack:
+            # ── 公式の二重読み取り戦略 ──
+            # data_only=True:  キャッシュされた計算結果を読む（ユーザーに見える値）
+            # data_only=False: 数式そのものを読む（元の入力式）
+            # この二重読み取りにより、キャッシュが古い場合でも数式が保持される
+            try:
+                wb_cached = openpyxl.load_workbook(file_path, data_only=True)
+                stack.callback(wb_cached.close)
+                wb_formula = openpyxl.load_workbook(file_path, data_only=False)
+                stack.callback(wb_formula.close)
+            except Exception as exc:
+                raise ParseError(f"Excelファイルの読み込みに失敗: {exc}", file_path)
 
-        try:
             for sheet_name in wb_cached.sheetnames:
                 ws_cached = wb_cached[sheet_name]
                 ws_formula = wb_formula[sheet_name]
@@ -139,21 +148,12 @@ class JapaneseExcelParser(BaseParser):
                 # ── 戦略1: Sheet名を Markdown 一級見出しとして注入 ──
                 full_text, _ = self._append_section(full_text, f"# {sheet_name}")
 
-                grid, broadcast_cells, merge_spans = self._build_grid_with_merged_cells(
+                section_md, section_chunks, comments_md = self._parse_visible_sheet(
                     ws_cached,
                     ws_formula,
-                    all_warnings,
-                )
-                if not grid:
-                    full_text, _ = self._append_section(full_text, "_(空のシート)_")
-                    continue
-
-                section_md, section_chunks = self._heuristic_scan(
-                    grid,
                     file_path,
                     sheet_name,
-                    broadcast_cells,
-                    merge_spans,
+                    all_warnings,
                 )
                 if section_md:
                     full_text, section_start = self._append_section(
@@ -165,17 +165,37 @@ class JapaneseExcelParser(BaseParser):
                             chunk.char_end += section_start
                 all_chunks.extend(section_chunks)
 
-                # ── TextBox / コメントの抽出 ──
-                shapes_md = self._extract_shapes_and_comments(ws_cached)
-                if shapes_md:
-                    full_text, _ = self._append_section(full_text, shapes_md)
-
-        finally:
-            wb_cached.close()
-            wb_formula.close()
+                # ── コメントの抽出 ──
+                if comments_md:
+                    full_text, _ = self._append_section(full_text, comments_md)
 
         text = full_text + "\n" if full_text else ""
         return ParseResult(text=text, chunks=all_chunks, warnings=all_warnings)
+
+    def _parse_visible_sheet(
+        self,
+        ws_cached: Worksheet,
+        ws_formula: Worksheet,
+        file_path: str,
+        sheet_name: str,
+        warnings: list[str],
+    ) -> tuple[str, list[ChunkMeta], str]:
+        """可視シートを本文Markdown、チャンク、コメントMarkdownへ変換する。"""
+        grid, merge_spans = self._build_grid_with_merged_cells(
+            ws_cached,
+            ws_formula,
+            warnings,
+        )
+        if not grid:
+            return "_(空のシート)_", [], ""
+
+        section_md, section_chunks = self._heuristic_scan(
+            grid,
+            file_path,
+            sheet_name,
+            merge_spans,
+        )
+        return section_md, section_chunks, self._extract_comments(ws_cached)
 
     def _append_section(
         self,
@@ -191,28 +211,42 @@ class JapaneseExcelParser(BaseParser):
         start = len(full_text) + len(separator)
         return f"{full_text}{separator}{normalized}", start
 
+    def _build_chunk_meta(
+        self,
+        file_path: str,
+        content_type: ContentType,
+        sheet_name: str | None = None,
+        cell_range: str | None = None,
+        is_broadcast_fill: bool = False,
+    ) -> ChunkMeta:
+        """チャンク生成時の共通メタデータを組み立てる。"""
+        return ChunkMeta(
+            source_file=file_path,
+            content_type=content_type,
+            sheet_name=sheet_name,
+            cell_range=cell_range,
+            is_broadcast_fill=is_broadcast_fill,
+        )
+
     # ═══════════════════════════════════════════════
-    # 戦略2: 結合セル解構と広播
+    # 戦略2: 結合セル解構
     # ═══════════════════════════════════════════════
     def _build_grid_with_merged_cells(
         self,
         ws_cached: Worksheet,
         ws_formula: Worksheet,
         warnings: list[str],
-    ) -> tuple[
-        list[list[str]], set[tuple[int, int]], dict[tuple[int, int], tuple[int, int]]
-    ]:
+    ) -> tuple[list[list[str]], dict[tuple[int, int], tuple[int, int]]]:
         """結合セルを展開・解構してフラットな二次元グリッドを構築。
 
         Returns:
             grid: 全セル値のフラット二次元リスト
-            broadcast_cells: 結合セルから広播されたセルの座標セット
             merge_spans: （アンカー座標 -> (行数, 列数)）のマッピング
         """
         # ─── グリッドの初期化 ───
         if ws_cached.max_row is None or ws_cached.max_column is None:
             # シートが完全に空の場合は空のグリッドを返す
-            return [], set(), {}
+            return [], {}
 
         max_row = ws_cached.max_row
         max_col = ws_cached.max_column
@@ -229,7 +263,6 @@ class JapaneseExcelParser(BaseParser):
                 )
 
         # ─── 結合セルの処理 ───
-        broadcast_cells: set[tuple[int, int]] = set()  # 結合セルから値が広播されたセル
         merge_spans: dict[tuple[int, int], tuple[int, int]] = {}  # 結合セルのメタデータ
         for merged_range in ws_cached.merged_cells.ranges:
             # アンカー（結合セルの左上）を基準に行・列スパンを記録
@@ -242,14 +275,13 @@ class JapaneseExcelParser(BaseParser):
             for row_idx in range(merged_range.min_row, merged_range.max_row + 1):
                 for col_idx in range(merged_range.min_col, merged_range.max_col + 1):
                     if (row_idx - 1, col_idx - 1) != anchor:
-                        broadcast_cells.add((row_idx - 1, col_idx - 1))  # 広播セル記録
                         grid[row_idx - 1][col_idx - 1] = ""  # グリッドをクリア
 
             warnings.append(
                 f"{ParserWarning.MERGED_CELL_BROADCAST.value}: {merged_range}"
             )
 
-        return grid, broadcast_cells, merge_spans
+        return grid, merge_spans
 
     def _read_cell_value(
         self,
@@ -292,7 +324,6 @@ class JapaneseExcelParser(BaseParser):
         grid: list[list[str]],
         file_path: str,
         sheet_name: str,
-        broadcast_cells: set[tuple[int, int]],
         merge_spans: dict[tuple[int, int], tuple[int, int]],
     ) -> tuple[str, list[ChunkMeta]]:
         """启发式走査：テーブル vs KV形式などの構造を判定して適切に分割・レンダリング。
@@ -304,8 +335,6 @@ class JapaneseExcelParser(BaseParser):
             markdown: Markdown形式の文字列
             chunks: 抽出されたメタデータチャンク
         """
-        del broadcast_cells
-
         effective_cols = self._calc_effective_cols(grid)
         if effective_cols == 0:
             return "", []
@@ -340,7 +369,7 @@ class JapaneseExcelParser(BaseParser):
             table_len = self._detect_table_length(row_profiles[index:])
             if table_len:
                 table_rows = row_profiles[index : index + table_len]
-                table_md, chunk = self._flush_table(
+                table_md, chunk = self._render_table_block(
                     table_rows,
                     file_path,
                     sheet_name,
@@ -398,19 +427,8 @@ class JapaneseExcelParser(BaseParser):
                 start_col=col_idx,
                 end_col=col_idx + col_span - 1,
             )
-            if (
-                cells
-                and cells[-1].text == cell.text
-                and cells[-1].end_col + 1 >= cell.start_col
-            ):
-                cells[-1] = RowCell(
-                    text=cell.text,
-                    start_col=cells[-1].start_col,
-                    end_col=max(cells[-1].end_col, cell.end_col),
-                )
-                continue
             cells.append(cell)
-        return RowProfile(row_index=row_idx, raw_row=row, cells=cells)
+        return RowProfile(row_index=row_idx, raw_row=tuple(row), cells=tuple(cells))
 
     def _detect_table_length(self, rows: list[RowProfile]) -> int:
         """行グループの先頭からテーブル構造が続く行数を検出。
@@ -446,7 +464,7 @@ class JapaneseExcelParser(BaseParser):
         if (
             len(first_cells) == 2
             and first_cells[0].text == first_cells[1].text
-            and first_cells[0].col_span >= 4
+            and first_cells[0].col_span >= self.REPEATED_WIDE_LABEL_MIN_SPAN
         ):
             return False
 
@@ -466,16 +484,22 @@ class JapaneseExcelParser(BaseParser):
         shared_density = len(shared_columns) / shared_span if shared_span else 0
 
         if len(rows) == 2:
-            return len(shared_columns) >= 3 and shared_density >= 0.9
+            return (
+                len(shared_columns) >= self.MIN_SHARED_TABLE_COLUMNS
+                and shared_density >= self.TWO_ROW_TABLE_SHARED_DENSITY
+            )
 
-        return len(shared_columns) >= 3 and average_width >= 3
+        return (
+            len(shared_columns) >= self.MIN_SHARED_TABLE_COLUMNS
+            and average_width >= self.MIN_SHARED_TABLE_COLUMNS
+        )
 
     def _has_structured_merged_columns(self, rows: list[RowProfile]) -> bool:
         sample_rows = rows[: min(3, len(rows))]
         if len(sample_rows) < 2:
             return False
 
-        if min(len(row.cells) for row in sample_rows) < 4:
+        if min(len(row.cells) for row in sample_rows) < self.MIN_STRUCTURED_MERGED_COLUMNS:
             return False
 
         if not any(cell.col_span > 1 for row in sample_rows for cell in row.cells):
@@ -485,7 +509,7 @@ class JapaneseExcelParser(BaseParser):
             return False
 
         header_positions = tuple(cell.start_col for cell in sample_rows[0].cells)
-        if len(header_positions) < 4:
+        if len(header_positions) < self.MIN_STRUCTURED_MERGED_COLUMNS:
             return False
 
         return all(
@@ -516,7 +540,7 @@ class JapaneseExcelParser(BaseParser):
             for index in range(0, len(row.cells), 2):
                 key_cell = row.cells[index]
                 value_cell = row.cells[index + 1]
-                if key_cell.col_span > 2:
+                if key_cell.col_span > self.MAX_KV_KEY_COL_SPAN:
                     return False
                 if value_cell.col_span <= key_cell.col_span:
                     return False
@@ -538,8 +562,8 @@ class JapaneseExcelParser(BaseParser):
         if not markdown:
             return None
 
-        chunk = ChunkMeta(
-            source_file=file_path,
+        chunk = self._build_chunk_meta(
+            file_path=file_path,
             content_type=ContentType.TEXT,
             sheet_name=sheet_name,
             cell_range=f"row {row.row_index + 1}",
@@ -599,8 +623,8 @@ class JapaneseExcelParser(BaseParser):
             parts.append(f"- {values[i]}")
             i += 1
 
-        chunk = ChunkMeta(
-            source_file=file_path,
+        chunk = self._build_chunk_meta(
+            file_path=file_path,
             content_type=ContentType.KEY_VALUE,
             sheet_name=sheet_name,
             cell_range=f"row {row.row_index + 1}",
@@ -612,11 +636,11 @@ class JapaneseExcelParser(BaseParser):
         row: RowProfile,
         next_row: RowProfile | None,
     ) -> bool:
-        if len(row.cells) < 5 or len(row.cells) % 2 == 0:
+        if len(row.cells) < self.LEADING_CONTEXT_MIN_CELLS or len(row.cells) % 2 == 0:
             return False
 
         first = row.cells[0]
-        if first.col_span < 3:
+        if first.col_span < self.LEADING_CONTEXT_MIN_SPAN:
             return False
 
         if next_row and next_row.cells and next_row.cells[0].text == first.text:
@@ -642,7 +666,7 @@ class JapaneseExcelParser(BaseParser):
                 return col_idx + 1
         return 0
 
-    def _flush_table(
+    def _render_table_block(
         self,
         rows: list[RowProfile],
         file_path: str,
@@ -662,18 +686,18 @@ class JapaneseExcelParser(BaseParser):
             chunk: チャンクメタデータ
         """
         if not rows:
-            return "", ChunkMeta(source_file=file_path, content_type=ContentType.TABLE)
+            return "", self._build_chunk_meta(file_path, ContentType.TABLE)
 
         active_columns = sorted({cell.start_col for row in rows for cell in row.cells})
         if not active_columns:
-            return "", ChunkMeta(source_file=file_path, content_type=ContentType.TABLE)
+            return "", self._build_chunk_meta(file_path, ContentType.TABLE)
 
         compressed_rows = [
             [row.raw_row[col_idx] for col_idx in active_columns] for row in rows
         ]
         deduped_rows = self._dedupe_consecutive_rows(compressed_rows)
         if not deduped_rows:
-            return "", ChunkMeta(source_file=file_path, content_type=ContentType.TABLE)
+            return "", self._build_chunk_meta(file_path, ContentType.TABLE)
 
         headers = deduped_rows[0]
         data_rows = deduped_rows[1:]
@@ -684,8 +708,8 @@ class JapaneseExcelParser(BaseParser):
         cell_range = (
             f"{col_start}{rows[0].row_index + 1}:{col_end}{rows[-1].row_index + 1}"
         )
-        chunk = ChunkMeta(
-            source_file=file_path,
+        chunk = self._build_chunk_meta(
+            file_path=file_path,
             content_type=ContentType.TABLE,
             sheet_name=sheet_name,
             cell_range=cell_range,
@@ -694,25 +718,22 @@ class JapaneseExcelParser(BaseParser):
 
     def _dedupe_consecutive_rows(self, rows: list[list[str]]) -> list[list[str]]:
         deduped: list[list[str]] = []
+        previous_key: tuple[str, ...] | None = None
         for row in rows:
-            escaped = [MarkdownEscaper.escape_cell(cell) for cell in row]
-            if all(cell == "" for cell in escaped):
+            normalized_key = tuple(MarkdownEscaper.escape_cell(cell) for cell in row)
+            if all(cell == "" for cell in normalized_key):
                 continue
-            if deduped and escaped == deduped[-1]:
+            if normalized_key == previous_key:
                 continue
-            deduped.append(escaped)
+            deduped.append(row)
+            previous_key = normalized_key
         return deduped
 
-    def _extract_shapes_and_comments(self, ws: Worksheet) -> str:
+    def _extract_comments(self, ws: Worksheet) -> str:
         """シート内セルのコメント（メモ）を抽出してマークダウンに変換。
 
         openpyxl の制限:
         - 通常のコメント（セルメモ）は抽出可能
-        - AutoShape / TextBox などの自由配置テキストは限定的
-
-        TODO:
-            VLM（Vision Language Model）による画像・図形解析で補完予定。
-            例：テキストボックス、矢印図形、フローチャートなど
 
         Returns:
             コメントを列挙したマークダウン（コメントがない場合は空文字列）
