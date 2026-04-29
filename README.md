@@ -14,6 +14,9 @@
 - 可追溯回答：RAG 返回回答正文、命中来源、分块位置与 token/耗时元数据
 - 前后端分离：后端 `FastAPI`，前端 `React + Vite`
 - 可本地化部署：默认使用 `Ollama + BGE-M3 + 本地 rerank-adapter`
+## 动画演示
+![动画演示](docs\动画演示.gif)
+
 
 ## 检索模式说明
 
