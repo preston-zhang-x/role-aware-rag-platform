@@ -4,7 +4,7 @@
 这个仓库的重点不是“先回答，再补权限”，而是“先按角色过滤，再检索和生成”，尽量从检索入口就避免越权内容进入上下文。
 
 项目当前对日式 Excel 式样书做了专门处理，适合方眼纸风格、表格与说明混排、合并单元格较多的设计文档。
-
+![System Architecture](docs/assets/system-architecture.jpg)
 ## 项目亮点
 
 - 角色感知检索：基于 `allowed_roles` 做检索前过滤，支持 `admin / manager / staff`
@@ -15,24 +15,19 @@
 - 前后端分离：后端 `FastAPI`，前端 `React + Vite`
 - 可本地化部署：默认使用 `Ollama + BGE-M3 + 本地 rerank-adapter`
 
-## 系统流程
+## 检索模式说明
 
-```text
-本地文档 / Excel / PDF
-        │
-        ▼
-DocumentLoader -> Parser -> Markdown -> Chunk
-        │
-        ▼
-Embedding -> Qdrant
-        │
-        ├─ BM25 索引（按需构建）
-        ▼
-用户登录 -> JWT -> 当前角色
-        │
-        ▼
-按角色过滤检索 -> 可选 rerank -> LLM 生成回答 -> 返回来源
-```
+通过 `.env` 中的 `RETRIEVAL_MODE` 切换：
+
+| 模式            | 说明                     | 适合场景                 |
+| --------------- | ------------------------ | ------------------------ |
+| `vector`        | 纯向量检索               | 语义相似召回优先         |
+| `bm25`          | 纯关键词检索             | 编号、字段名、精确词命中 |
+| `hybrid`        | 向量 + BM25，经 RRF 融合 | 平衡召回                 |
+| `hybrid_rerank` | `hybrid` 后再做 rerank   | 更高精度上限             |
+
+## 正确率测评
+![Snipaste_2026-04-29_18-29-00](docs\assets\Snipaste_2026-04-29_18-29-00.png)
 
 ## 技术栈
 
@@ -43,7 +38,7 @@ Embedding -> Qdrant
 | AI | `OpenAI-compatible API`、默认 `Ollama`、`BGE-M3`、`qwen3.5:4b` |
 | Parsing | `openpyxl`、`pdfplumber`、`markitdown` |
 | Frontend | `React 19`、`Vite`、`TanStack Query`、`React Router`、`Tailwind CSS` |
-| Infra | `PostgreSQL`、`Docker Compose`、可选 `pgAdmin` |
+| Infra | `PostgreSQL`、`Docker Compose` |
 
 ## 目录结构
 
@@ -57,7 +52,7 @@ Embedding -> Qdrant
 │  └─ services/         解析、导入、检索、RAG、rerank 等核心逻辑
 ├─ frontend/            React 前端（登录页 + 聊天页）
 ├─ script/              导入、评测、Qdrant 重置、rerank 启动脚本
-├─ docs/                设计文档、式样书、教学文档
+├─ docs/                设计文档、式样书
 ├─ out/                 生成产物与图示
 ├─ tests/               单元测试与集成测试
 ├─ alembic/             数据库迁移
@@ -136,10 +131,9 @@ RERANK_MAX_TOKENS_PER_DOC=1024
 说明：
 
 - 如果你不是用 Ollama，只要模型服务兼容 OpenAI API，并且 `/v1/models` 能返回 `CHAT_MODEL` 与 `EMBEDDING_MODEL` 即可
-- 如果使用带思考链的模型，建议保持 `CHAT_THINK=false`，减少 RAG 超时概率
+- 如果使用带思考链的模型，建议保持 `CHAT_THINK=false`，减少响应响应时间
 - 当 `RETRIEVAL_MODE=hybrid_rerank` 时，`RERANK_*` 配置必须有效
 - 当前默认 preset 会让 `hybrid_rerank` 先扩大候选，再返回更大的 rerank 窗口给最终裁剪；生成阶段仍只保留 `TOP_K=5`
-- `RERANK_SCORE_THRESHOLD` 默认建议留空，避免 rerank 成功后又被旧的融合分数逻辑二次过滤
 
 ### 3. 安装依赖
 
@@ -164,12 +158,6 @@ docker compose up -d db qdrant
 uv run alembic upgrade head
 ```
 
-如果你需要图形化查看数据库，也可以额外启动 `pgadmin`：
-
-```powershell
-docker compose up -d pgadmin
-```
-
 ### 5. 启动 Ollama 并拉取模型
 
 如果你使用仓库默认本地模型方案，先设置 Ollama 相关参数：
@@ -190,12 +178,6 @@ ollama serve
 ```powershell
 ollama pull qwen3.5:4b
 ollama pull bge-m3
-```
-
-如果你要测试更大的聊天模型，也可以额外拉取：
-
-```powershell
-ollama pull qwen3.5:8b
 ```
 
 ### 6. 启动 rerank-adapter
@@ -237,11 +219,10 @@ uv run python script/ingest_repo_spec.py --file "docs\\設計_処理設計書_ex
 
 - 当前 `script/ingest_repo_spec.py` 默认会把导入文档的 `allowed_roles` 写成 `admin / manager / staff`
 - 如果你要验证真正的角色隔离效果，需要在自定义导入流程中传入不同的 `allowed_roles`
-- 也就是说，仓库核心能力支持按角色检索，但示例脚本默认是“所有角色可读”
 
 ### 8. 创建初始登录用户
 
-仓库当前没有内置 seed 脚本，首次登录前需要手动创建用户。
+首次登录前需要手动创建用户。
 
 先生成 bcrypt 密码哈希：
 
@@ -306,21 +287,6 @@ curl -X POST "http://127.0.0.1:8000/api/v1/auth/login" \
   -d "username=admin_demo&password=123456"
 ```
 
-### 健康检查
-
-| 方法 | 路径 | 说明 |
-| --- | --- | --- |
-| `GET` | `/api/v1/health/live` | 进程存活检查 |
-| `GET` | `/api/v1/health/ready` | 依赖就绪检查 |
-| `GET` | `/api/v1/health` | 等价于 `ready` |
-
-`ready` 会检查：
-
-- 数据库连接
-- Qdrant 连接
-- OpenAI-compatible 模型服务中的 `chat_model` 和 `embedding_model`
-- `rerank-adapter` 健康状态（仅 `hybrid_rerank` 时要求为 `ok`）
-
 ### RAG
 
 | 方法 | 路径 | 说明 |
@@ -344,35 +310,6 @@ curl -X POST "http://127.0.0.1:8000/api/v1/rag/ask" \
 - `metadata.prompt_tokens`
 - `metadata.completion_tokens`
 - `metadata.total_tokens`
-
-### 文档 CRUD
-
-| 方法 | 路径 | 权限 |
-| --- | --- | --- |
-| `GET` | `/api/v1/docs/` | 已登录用户 |
-| `GET` | `/api/v1/docs/{doc_id}` | 已登录用户 |
-| `POST` | `/api/v1/docs/` | `admin`、`manager` |
-| `PUT` | `/api/v1/docs/{doc_id}` | `admin`、`manager` |
-| `DELETE` | `/api/v1/docs/{doc_id}` | `admin` |
-
-说明：
-
-- 这里的 `documents` 表是关系型数据库中的示例 CRUD 资源
-- 它和 Qdrant 中的知识库分块不是同一套数据
-- 知识库导入目前主要走 `script/ingest_repo_spec.py` 与 `IngestService`
-
-## 检索模式说明
-
-通过 `.env` 中的 `RETRIEVAL_MODE` 切换：
-
-| 模式 | 说明 | 适合场景 |
-| --- | --- | --- |
-| `vector` | 纯向量检索 | 语义相似召回优先 |
-| `bm25` | 纯关键词检索 | 编号、字段名、精确词命中 |
-| `hybrid` | 向量 + BM25，经 RRF 融合 | 平衡召回 |
-| `hybrid_rerank` | `hybrid` 后再做 rerank | 更高精度上限，但要以同轮 benchmark 验证为准 |
-
-如果你只是先验证链路能否跑通，可以先把 `RETRIEVAL_MODE` 设成 `hybrid`，这样可以跳过 rerank 模型下载和服务启动。
 
 ## 文档解析与导入说明
 
@@ -403,7 +340,7 @@ curl -X POST "http://127.0.0.1:8000/api/v1/rag/ask" \
 - `cell_range`
 - `content_type`
 
-RAG 检索阶段会基于 `allowed_roles` 构造过滤条件，因此角色隔离发生在检索入口，而不是回答后处理阶段。
+RAG 检索阶段会基于 `allowed_roles` 构造过滤条件，因此角色隔离发生在检索入口。
 
 ## 前端说明
 
@@ -414,7 +351,7 @@ RAG 检索阶段会基于 `allowed_roles` 构造过滤条件，因此角色隔�
 
 开发模式使用 Vite 代理转发后端请求，因此前后端可以分别独立启动。
 
-## 测试与评测
+## 测试
 
 ### 运行测试
 
@@ -427,64 +364,6 @@ uv run pytest
 ```powershell
 npm --prefix frontend run lint
 ```
-
-### 运行评测脚本
-
-先设置评测账号环境变量：
-
-```powershell
-$env:EVAL_ADMIN_USERNAME="admin_demo"
-$env:EVAL_ADMIN_PASSWORD="123456"
-```
-
-然后执行：
-
-```powershell
-uv run python script/run_eval.py
-```
-
-评测结果会输出到：
-
-- `docs/report_baseline.md`
-
-评测问题集位于：
-
-- `data/fixtures/eval_questions.json`
-
-## 常用排查项
-
-### `GET /api/v1/health/ready` 返回 `degraded`
-
-优先检查：
-
-- PostgreSQL 是否已启动并完成迁移
-- `QDRANT_URL` 是否可访问
-- `OPENAI_BASE_URL` 对应的 `/v1/models` 是否包含 `CHAT_MODEL` 与 `EMBEDDING_MODEL`
-- 如果是 `hybrid_rerank`，确认 `http://localhost:8090/health` 返回 `status=ok`
-
-### Qdrant 报向量维度不匹配
-
-通常是历史 collection 仍使用旧 embedding 维度。可直接重建：
-
-```powershell
-uv run python script/reset_qdrant_collection.py --collection documents
-```
-
-然后重新导入文档。
-
-### 登录成功但问答没有结果
-
-优先排查：
-
-- 文档是否已经成功导入 Qdrant
-- 当前账号角色是否在文档的 `allowed_roles` 内
-- `TOP_K` 或 `SCORE_THRESHOLD` 是否过于严格
-
-## 相关文档
-
-- 设计文档：[`docs/`](./docs)
-- 前端说明：[`frontend/README.md`](./frontend/README.md)
-- 生成图示：[`out/docs/`](./out/docs)
 
 ## License
 
