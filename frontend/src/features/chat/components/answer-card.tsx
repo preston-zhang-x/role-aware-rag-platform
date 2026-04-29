@@ -1,4 +1,3 @@
-import { useState } from "react"
 import {
   AlertCircle,
   Bot,
@@ -7,6 +6,7 @@ import {
   FileText,
   LoaderCircle,
 } from "lucide-react"
+import { useState } from "react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -176,13 +176,10 @@ export function AnswerCard({ message }: AnswerCardProps) {
                 )}
               </div>
 
-              <p className="text-xs leading-5 text-slate-600">
-                回答は現在の role で閲覧可能なドキュメントだけを対象に生成されます。
-              </p>
             </div>
           </div>
 
-          <div className="mt-4">
+          <div className="mt-5">
             {isLoading ? (
               <div className="space-y-3">
                 <Skeleton className="h-4 w-full" />
@@ -197,7 +194,9 @@ export function AnswerCard({ message }: AnswerCardProps) {
                 <AlertDescription>{message.errorMessage}</AlertDescription>
               </Alert>
             ) : (
-              <AnswerMarkdown>{message.answer}</AnswerMarkdown>
+              <div className="border-l-[3px] border-primary/30 pl-4 sm:pl-5">
+                <AnswerMarkdown>{message.answer}</AnswerMarkdown>
+              </div>
             )}
           </div>
 
@@ -281,7 +280,7 @@ export function AnswerCard({ message }: AnswerCardProps) {
             </div>
           ) : null}
 
-          <div className="mt-6">
+          <div className="mt-5 border-t border-slate-100 pt-4">
             <AnswerMetadata metadata={message.metadata} isLoading={isLoading} />
           </div>
         </div>
