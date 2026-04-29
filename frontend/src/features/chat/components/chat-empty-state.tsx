@@ -1,6 +1,5 @@
 import { Compass, ShieldCheck, Sparkles } from "lucide-react"
 
-import { Badge } from "@/components/ui/badge"
 
 type ChatEmptyStateProps = {
   roleLabel: string
@@ -14,16 +13,9 @@ export function ChatEmptyState({ roleLabel }: ChatEmptyStateProps) {
       </div>
 
       <div className="mt-5 space-y-3">
-        <Badge variant="secondary" className="h-6 px-3 text-[11px] tracking-[0.08em]">
-          ROLE {roleLabel}
-        </Badge>
         <h2 className="text-2xl font-semibold tracking-tight text-slate-900">
           RAG チャットを始めましょう
         </h2>
-        <p className="mx-auto max-w-2xl text-sm leading-7 text-slate-600">
-          質問を送信すると、現在の role で閲覧可能なドキュメントだけを対象に検索し、
-          回答・参照ソース・token 使用量をまとめて表示します。
-        </p>
       </div>
 
       <div className="mt-6 grid gap-3 text-left md:grid-cols-3">
