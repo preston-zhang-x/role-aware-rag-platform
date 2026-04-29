@@ -512,7 +512,10 @@ class JapaneseExcelParser(BaseParser):
         if len(sample_rows) < 2:
             return False
 
-        if min(len(row.cells) for row in sample_rows) < self.MIN_STRUCTURED_MERGED_COLUMNS:
+        if (
+            min(len(row.cells) for row in sample_rows)
+            < self.MIN_STRUCTURED_MERGED_COLUMNS
+        ):
             return False
 
         if not any(cell.col_span > 1 for row in sample_rows for cell in row.cells):
