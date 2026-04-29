@@ -184,6 +184,80 @@ def special_chars_excel(tmp_path) -> Path:
 
 
 @pytest.fixture
+def duplicate_column_table_excel(tmp_path) -> Path:
+    """隣接する同名列を持つ Excel テーブル。"""
+    file_path = tmp_path / "duplicate_columns.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    assert ws is not None
+    ws.title = "重複列"
+
+    ws.append(["Flag", "Flag", "Name"])
+    ws.append(["Y", "Y", "Alice"])
+    ws.append(["N", "N", "Bob"])
+
+    wb.save(file_path)
+    wb.close()
+    return file_path
+
+
+@pytest.fixture
+def table_escape_excel(tmp_path) -> Path:
+    """テーブル内の Markdown 特殊文字を検証する Excel。"""
+    file_path = tmp_path / "table_escape.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    assert ws is not None
+    ws.title = "Escape"
+
+    ws.append(["A", "B", "C"])
+    ws.append(["pipe|value", "line\nbreak", "plain"])
+    ws.append(["x", "y", "z"])
+
+    wb.save(file_path)
+    wb.close()
+    return file_path
+
+
+@pytest.fixture
+def kv_label_punctuation_excel(tmp_path) -> Path:
+    """キー末尾に区切り記号が含まれる Excel。"""
+    file_path = tmp_path / "kv_label_punctuation.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    assert ws is not None
+    ws.title = "表紙"
+
+    ws["A1"] = "作成日："
+    ws["B1"] = "2026-03-29"
+    ws["A2"] = "作成者:"
+    ws["B2"] = "張小鵬"
+
+    wb.save(file_path)
+    wb.close()
+    return file_path
+
+
+@pytest.fixture
+def non_heading_text_excel(tmp_path) -> Path:
+    """見出しにしない単独セル行を含む Excel。"""
+    file_path = tmp_path / "non_heading_text.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    assert ws is not None
+    ws.title = "フロー"
+
+    ws["A1"] = "Client"
+    ws["A2"] = "-> /api/v1/rag/ask"
+    ws["A3"] = "with_payload=True"
+    ws["A4"] = "source_file"
+
+    wb.save(file_path)
+    wb.close()
+    return file_path
+
+
+@pytest.fixture
 def merged_title_excel(tmp_path) -> Path:
     """2 行結合タイトルが 1 回だけ見出し化される Excel"""
     file_path = tmp_path / "merged_title.xlsx"
@@ -557,6 +631,16 @@ class TestHeuristicScan:
         assert "- **管理番号:** PRJ-001" in result.text
         assert "| プロジェクト名 |" not in result.text
 
+    def test_kv_label_trailing_punctuation_is_normalized(
+        self, parser, kv_label_punctuation_excel
+    ):
+        """キー末尾のコロンを重複させずに箇条書きへ変換すること"""
+        result = parser.parse(str(kv_label_punctuation_excel))
+        assert "- **作成日:** 2026-03-29" in result.text
+        assert "- **作成者:** 張小鵬" in result.text
+        assert "作成日：:**" not in result.text
+        assert "作成者::**" not in result.text
+
     def test_long_merged_text_kept_as_paragraph(self, parser, semantic_text_excel):
         """長文の単一セル行は見出しではなく段落として出力されること"""
         result = parser.parse(str(semantic_text_excel))
@@ -568,11 +652,33 @@ class TestHeuristicScan:
         )
         assert "## 補足:" not in result.text
 
+    def test_flow_and_metadata_like_text_not_promoted_to_heading(
+        self, parser, non_heading_text_excel
+    ):
+        """矢印行や設定キーだけの行は見出しにしないこと"""
+        result = parser.parse(str(non_heading_text_excel))
+        assert "## Client" in result.text
+        assert "## -> /api/v1/rag/ask" not in result.text
+        assert "## with_payload=True" not in result.text
+        assert "## source_file" not in result.text
+        assert "-> /api/v1/rag/ask" in result.text
+        assert "with_payload=True" in result.text
+        assert "source_file" in result.text
+
     def test_table_trimmed_to_used_columns(self, parser, wide_sheet_table_excel):
         """テーブルはシート全体ではなくブロックの実列数で出力されること"""
         result = parser.parse(str(wide_sheet_table_excel))
         assert "| ID | 名前 | 部署 |" in result.text
         assert "| ID | 名前 | 部署 |  |" not in result.text
+
+    def test_duplicate_adjacent_columns_are_preserved(
+        self, parser, duplicate_column_table_excel
+    ):
+        """同じ見出しが隣接しても列を潰さずテーブルとして保持すること"""
+        result = parser.parse(str(duplicate_column_table_excel))
+        assert "| Flag | Flag | Name |" in result.text
+        assert "| Y | Y | Alice |" in result.text
+        assert "- **Flag:** Name" not in result.text
 
     def test_merged_width_definition_table_kept_as_table(
         self, parser, merged_width_definition_table_excel
@@ -637,6 +743,13 @@ class TestSpecialCharacterEscaping:
         # テーブル内の改行は <br> に変換されるべき
         assert "改行" in result.text
 
+    def test_table_pipe_escaped_once(self, parser, table_escape_excel):
+        """テーブルセルのパイプ文字を二重エスケープしないこと"""
+        result = parser.parse(str(table_escape_excel))
+        assert "pipe\\|value" in result.text
+        assert "pipe\\\\|value" not in result.text
+        assert "line<br>break" in result.text
+
 
 # ═══════════════════════════════════════
 # エラーハンドリングテスト
@@ -650,6 +763,45 @@ class TestErrorHandling:
 
         with pytest.raises(ParseError):
             parser.parse("/nonexistent/file.xlsx")
+
+    def test_density_threshold_constructor_kept_for_compatibility(self, simple_excel):
+        """旧コンストラクタ引数を指定しても従来通り利用できること"""
+        parser = JapaneseExcelParser(density_threshold=0.5)
+        result = parser.parse(str(simple_excel))
+        assert "# 基本設計" in result.text
+
+    def test_cached_workbook_closed_when_formula_workbook_fails(
+        self, parser, tmp_path, monkeypatch
+    ):
+        """2回目の workbook 読み込みに失敗しても1回目を閉じること"""
+        from app.services.base_parser import ParseError
+
+        file_path = tmp_path / "broken_formula.xlsx"
+        file_path.write_bytes(b"placeholder")
+
+        class CloseAwareWorkbook:
+            def __init__(self):
+                self.closed = False
+
+            def close(self):
+                self.closed = True
+
+        cached_workbook = CloseAwareWorkbook()
+
+        def fake_load_workbook(path, data_only):
+            if data_only:
+                return cached_workbook
+            raise RuntimeError("formula workbook failed")
+
+        monkeypatch.setattr(
+            "app.services.excel_parser.openpyxl.load_workbook",
+            fake_load_workbook,
+        )
+
+        with pytest.raises(ParseError):
+            parser.parse(str(file_path))
+
+        assert cached_workbook.closed is True
 
     def test_chunks_metadata_complete(self, parser, simple_excel):
         """チャンクのメタデータが完全であること"""
