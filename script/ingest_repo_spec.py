@@ -1,5 +1,5 @@
 """
-生成済みの仕様 Excel を Qdrant に取り込むための簡易スクリプト。
+Excel を Qdrant に取り込むための簡易スクリプト。
 
 使い方:
     python script/ingest_repo_spec.py

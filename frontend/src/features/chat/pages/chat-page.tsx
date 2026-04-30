@@ -35,9 +35,6 @@ export default function ChatPage() {
               <h1 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
                 Role Aware RAG Platform
               </h1>
-              <p className="max-w-3xl text-sm leading-6 text-slate-600 sm:text-base">
-                役割ごとに閲覧可能な社内文書を絞り込み、回答と根拠を 1 つのチャット画面で確認できます。
-              </p>
             </div>
           </div>
 
@@ -50,13 +47,13 @@ export default function ChatPage() {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="space-y-2">
               <Badge variant="secondary" className="w-fit">
-                RAG Chat
+
               </Badge>
               <CardTitle className="text-lg text-slate-900">
-                質問、回答、参照情報をそのまま確認できる問い合わせビュー
+
               </CardTitle>
               <p className="max-w-3xl text-sm leading-6 text-slate-600">
-                質問を送ると、回答本文に加えて参照ソースと応答メタデータを同じカード内に表示します。
+
               </p>
             </div>
 

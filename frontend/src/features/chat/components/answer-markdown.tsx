@@ -8,13 +8,13 @@ type AnswerMarkdownProps = {
 
 export function AnswerMarkdown({ children }: AnswerMarkdownProps) {
   return (
-    <div className="text-sm text-slate-700">
+    <div className="text-[15px] text-slate-800 sm:text-base">
       <ReactMarkdown
         components={{
           p: ({ className, ...props }) => (
             <p
               className={cn(
-                "leading-7 text-slate-700 [&:not(:first-child)]:mt-4",
+                "leading-7 text-slate-800 sm:leading-8 [&:not(:first-child)]:mt-4",
                 className
               )}
               {...props}
@@ -23,7 +23,7 @@ export function AnswerMarkdown({ children }: AnswerMarkdownProps) {
           ol: ({ className, ...props }) => (
             <ol
               className={cn(
-                "mt-4 list-decimal space-y-2 pl-5 leading-7 text-slate-700",
+                "mt-4 list-decimal space-y-2 pl-5 leading-7 text-slate-800 sm:leading-8",
                 className
               )}
               {...props}
@@ -32,7 +32,7 @@ export function AnswerMarkdown({ children }: AnswerMarkdownProps) {
           ul: ({ className, ...props }) => (
             <ul
               className={cn(
-                "mt-4 list-disc space-y-2 pl-5 leading-7 text-slate-700",
+                "mt-4 list-disc space-y-2 pl-5 leading-7 text-slate-800 sm:leading-8",
                 className
               )}
               {...props}
@@ -58,7 +58,7 @@ export function AnswerMarkdown({ children }: AnswerMarkdownProps) {
           blockquote: ({ className, ...props }) => (
             <blockquote
               className={cn(
-                "mt-4 border-l-2 border-primary/25 bg-slate-50/80 px-4 py-3 text-slate-700",
+                "mt-4 border-l-2 border-primary/25 bg-slate-50/80 px-4 py-3 text-slate-800",
                 className
               )}
               {...props}
