@@ -1,6 +1,6 @@
 # Role Aware RAG Platform — role-aware RAG for enterprise knowledge bases
 
-面向企业内部知识库的角色感知 RAG 平台，在检索入口完成权限过滤，让每个用户只能召回自己角色可访问的文档内容。
+企業内ナレッジベース向けのロール認識 RAG プラットフォームです。検索入口で権限フィルタを行い、ユーザーが自分のロールで閲覧可能な文書だけを取得できるようにします。
 
 ---
 
@@ -16,44 +16,44 @@
 </p>
 
 <p align="left">
-  <strong>中文</strong> |
-  <a href="./README.ja.md">日本語</a> |
+  <a href="./README.zh.md">中文</a> |
+  <strong>日本語</strong> |
   <a href="./README.en.md">English</a>
 </p>
 
 ---
 
-## 项目概览
+## 概要
 
-Role Aware RAG Platform 是一个面向企业内部知识库的 RAG 应用。它把用户角色、文档权限、混合检索和来源追溯放在同一条问答链路里，适合需要权限隔离的后台系统、社内文档检索、日式设计书问答和本地化 AI 助手。
+Role Aware RAG Platform は、企業内文書を対象にした RAG アプリケーションです。ユーザーロール、文書権限、ハイブリッド検索、回答ソースの追跡を 1 つの QA フローに統合し、社内ナレッジ検索、設計書 QA、権限制御が必要な業務システムに向いています。
 
-项目重点解决复杂日式 Excel 式样书的结构化解析问题，并结合向量检索、BM25、RRF 融合与 rerank，提供稳定、可追溯、可本地部署的问答结果。
+特に、日本式の複雑な Excel 仕様書・設計書を構造化して解析することに重点を置いています。ベクトル検索、BM25、RRF 融合、rerank を組み合わせ、ローカル環境でも再現しやすい検索回答を提供します。
 
 ![System Architecture](docs/assets/system-architecture.jpg)
 
-## 核心能力
+## 主な機能
 
-- **角色感知检索**：按 `allowed_roles` 在检索前过滤，支持 `admin / manager / staff`
-- **多检索策略**：支持 `vector`、`bm25`、`hybrid`、`hybrid_rerank`
-- **Excel 式样书优化**：保留 Sheet 语义、展开合并单元格、区分 KV 区与表格区
-- **统一文档加载**：支持 `.xlsx`、`.xlsm`、`.xls`、`.xlsb`、`.pdf`
-- **可追溯回答**：返回回答正文、命中来源、分块位置、token 与耗时元数据
-- **前后端分离**：后端 `FastAPI`，前端 `React + Vite`
-- **本地化部署**：默认使用 `Ollama + BGE-M3 + 本地 rerank-adapter`
+- **ロール認識検索**：検索前に `allowed_roles` でフィルタし、`admin / manager / staff` をサポート
+- **複数の検索モード**：`vector`、`bm25`、`hybrid`、`hybrid_rerank`
+- **Excel 仕様書向け解析**：Sheet 意味、結合セル、KV 領域、表領域を保持
+- **統一ドキュメントローダー**：`.xlsx`、`.xlsm`、`.xls`、`.xlsb`、`.pdf` に対応
+- **追跡可能な回答**：回答本文、ヒットしたソース、chunk 位置、token、レイテンシを返却
+- **フロントエンド分離**：バックエンドは `FastAPI`、フロントエンドは `React + Vite`
+- **ローカル実行しやすい構成**：標準構成は `Ollama + BGE-M3 + local rerank-adapter`
 
-## 为什么做自定义 Excel Parser
+## なぜ独自の Excel Parser が必要か
 
-很多日式式样书本质上是用 Excel 排版的设计文档，和标准数据表差别很大。直接抽文本虽然能拿到内容，但章节、字段、说明区和表格区之间的关系很容易丢失。
+多くの日本式仕様書は、通常のデータ表ではなく、Excel をレイアウトツールとして使った設計文書です。単純にテキスト化すると、章、項目、説明領域、表領域の関係が失われやすくなります。
 
-自定义 parser 会保留人阅读式样书时依赖的结构信息，让后续 chunking、BM25 命中和来源引用都更稳定。
+この parser は、人が仕様書を読むときに頼る構造情報を残すため、chunking、BM25 のマッチ、回答ソースの引用が安定します。
 
 <table>
   <tr>
     <td width="50%" valign="top" align="center">
-      <strong>MarkItDown 直接转换</strong>
+      <strong>MarkItDown の直接変換</strong>
     </td>
     <td width="50%" valign="top" align="center">
-      <strong>自定义 Excel Parser</strong>
+      <strong>独自 Excel Parser</strong>
     </td>
   </tr>
   <tr>
@@ -66,90 +66,90 @@ Role Aware RAG Platform 是一个面向企业内部知识库的 RAG 应用。它
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <sub>复杂 Excel 式样书里容易出现 <code>Unnamed</code> 列、<code>NaN</code> 和说明区/表格区混杂的问题。</sub>
+      <sub>複雑な Excel 仕様書では、<code>Unnamed</code> 列、<code>NaN</code>、説明領域と表領域の混在が起こりやすくなります。</sub>
     </td>
     <td width="50%" valign="top">
-      <sub>保留字段名、章节层级、条目关系和可读结构，后续 chunking、BM25 检索和来源引用会更稳。</sub>
+      <sub>項目名、章構造、行同士の関係、読みやすい順序を保持し、後続の検索品質を安定させます。</sub>
     </td>
   </tr>
 </table>
 
-## 动画演示
+## デモ
 
-![动画演示](docs/动画演示.gif)
+![Demo](docs/动画演示.gif)
 
-## 检索模式
+## 検索モード
 
-通过 `.env` 中的 `RETRIEVAL_MODE` 切换：
+`.env` の `RETRIEVAL_MODE` で切り替えます。
 
-| 模式 | 说明 | 适合场景 |
+| モード | 説明 | 向いているケース |
 | --- | --- | --- |
-| `vector` | 纯向量检索 | 语义相似召回优先 |
-| `bm25` | 纯关键词检索 | 编号、字段名、精确词命中 |
-| `hybrid` | 向量 + BM25，经 RRF 融合 | 平衡召回 |
-| `hybrid_rerank` | `hybrid` 后再做 rerank | 更高精度上限 |
+| `vector` | ベクトル検索のみ | 意味的な類似度を重視 |
+| `bm25` | キーワード検索のみ | ID、項目名、完全一致語を重視 |
+| `hybrid` | ベクトル + BM25 を RRF で融合 | バランス重視 |
+| `hybrid_rerank` | `hybrid` の後に rerank | より高い精度を狙う場合 |
 
-## 正确率测评
+## 評価結果
 
-在 RAGBench `emanual` 子集上做离线评测。默认 `hybrid_rerank` 模式下共评测 `132` 个问题：
+RAGBench `emanual` サブセットでオフライン評価を行いました。標準の `hybrid_rerank` モードで `132` 問を評価しています。
 
-| 指标 | 结果 |
+| 指標 | 結果 |
 | --- | --- |
 | Accuracy | `90.9%` |
 | Source Hit Rate | `100.0%` |
 | Avg Source Recall | `0.833` |
 | Avg Answer Token F1 | `0.520` |
 
-详细评测结果见 [`docs/report_ragbench_emanual_hybrid_rerank.md`](docs/report_ragbench_emanual_hybrid_rerank.md)。
+詳細は [`docs/report_ragbench_emanual_hybrid_rerank.md`](docs/report_ragbench_emanual_hybrid_rerank.md) を参照してください。
 
 ![RAGBench hybrid rerank evaluation](docs/assets/Snipaste_2026-04-29_18-29-00.png)
 
-## 技术栈
+## 技術スタック
 
-| 层 | 组件 |
+| レイヤー | コンポーネント |
 | --- | --- |
 | Backend | `FastAPI`、`SQLAlchemy`、`Alembic` |
-| Retrieval | `Qdrant`、`BM25`、`RRF`、本地 `reranker` |
-| AI | `OpenAI-compatible API`、默认 `Ollama`、`BGE-M3`、`qwen3.5:4b` |
+| Retrieval | `Qdrant`、`BM25`、`RRF`、local `reranker` |
+| AI | `OpenAI-compatible API`、標準は `Ollama`、`BGE-M3`、`qwen3.5:4b` |
 | Parsing | `openpyxl`、`pdfplumber`、`markitdown` |
 | Frontend | `React 19`、`Vite`、`TanStack Query`、`React Router`、`Tailwind CSS` |
 | Infra | `PostgreSQL`、`Docker Compose` |
 
-## 快速开始
+## クイックスタート
 
-### 1. 环境准备
+### 1. 必要な環境
 
 - Python `3.11`
 - `uv`
 - Docker / Docker Compose
 - Ollama
-- Node.js 与 `npm`
+- Node.js と `npm`
 
-### 2. 配置环境变量
+### 2. 環境変数を準備
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-本地默认链路使用 `Ollama + BGE-M3 + hybrid_rerank`。如果不启用 rerank，可以把 `.env` 中的 `RETRIEVAL_MODE` 改成 `hybrid`、`bm25` 或 `vector`。
+標準構成は `Ollama + BGE-M3 + hybrid_rerank` です。rerank を使わない場合は、`.env` の `RETRIEVAL_MODE` を `hybrid`、`bm25`、または `vector` に変更してください。
 
-### 3. 安装依赖
+### 3. 依存関係をインストール
 
 ```powershell
 uv sync --extra rerank
 npm --prefix frontend install
 ```
 
-### 4. 启动基础服务
+### 4. 基盤サービスを起動
 
 ```powershell
 docker compose up -d db qdrant
 uv run alembic upgrade head
 ```
 
-### 5. 准备本地模型
+### 5. ローカルモデルを準備
 
-如果 Ollama 尚未运行，可以单独开一个终端：
+Ollama が起動していない場合は、別ターミナルで起動します。
 
 ```powershell
 $env:OLLAMA_MAX_LOADED_MODELS="1"
@@ -157,43 +157,43 @@ $env:OLLAMA_NUM_PARALLEL="1"
 ollama serve
 ```
 
-拉取默认模型：
+標準モデルを取得します。
 
 ```powershell
 ollama pull qwen3.5:4b
 ollama pull bge-m3
 ```
 
-### 6. 启动 rerank-adapter
+### 6. rerank-adapter を起動
 
-仅当 `RETRIEVAL_MODE=hybrid_rerank` 时需要，单独开一个终端：
+`RETRIEVAL_MODE=hybrid_rerank` の場合だけ必要です。別ターミナルで実行してください。
 
 ```powershell
 uv run python script/run_rerank_adapter.py
 ```
 
-### 7. 重建向量库并导入文档
+### 7. ベクトル DB を再作成して文書を投入
 
 ```powershell
 uv run python script/reset_qdrant_collection.py --collection documents
 uv run python script/ingest_repo_spec.py --dir docs --pattern *.xlsx --recursive
 ```
 
-也可以导入单个文件：
+単一ファイルを投入する場合：
 
 ```powershell
 uv run python script/ingest_repo_spec.py --file "docs\設計_処理設計書_excel_parser.xlsx"
 ```
 
-### 8. 创建初始登录用户
+### 8. 初期ログインユーザーを作成
 
-先生成 bcrypt 密码哈希：
+bcrypt ハッシュを生成します。
 
 ```powershell
 uv run python -c "from app.core.security import hash_password; print(hash_password('123456'))"
 ```
 
-把输出写入数据库：
+出力されたハッシュを DB に登録します。
 
 ```sql
 INSERT INTO users (username, hashed_password, role)
@@ -203,23 +203,23 @@ VALUES
   ('staff_demo', '<PUT_HASH_HERE>', 'staff');
 ```
 
-### 9. 启动应用
+### 9. アプリケーションを起動
 
-后端：
+バックエンド：
 
 ```powershell
 uv run uvicorn app.main:app --reload
 ```
 
-前端：
+フロントエンド：
 
 ```powershell
 npm --prefix frontend run dev
 ```
 
-访问地址：
+主な URL：
 
-| 服务 | 地址 |
+| サービス | URL |
 | --- | --- |
 | FastAPI | `http://127.0.0.1:8000` |
 | Swagger UI | `http://127.0.0.1:8000/docs` |
@@ -229,16 +229,16 @@ npm --prefix frontend run dev
 | Qdrant HTTP | `http://127.0.0.1:6333` |
 | rerank-adapter | `http://localhost:8090` |
 
-## API 概览
+## API 概要
 
-### 认证
+### 認証
 
-| 方法 | 路径 | 说明 |
+| メソッド | パス | 説明 |
 | --- | --- | --- |
-| `POST` | `/api/v1/auth/login` | 表单登录，返回 JWT |
-| `GET` | `/api/v1/auth/me` | 获取当前用户 |
+| `POST` | `/api/v1/auth/login` | フォームログインし JWT を返す |
+| `GET` | `/api/v1/auth/me` | 現在のユーザーを取得 |
 
-登录示例：
+ログイン例：
 
 ```bash
 curl -X POST "http://127.0.0.1:8000/api/v1/auth/login" \
@@ -248,54 +248,54 @@ curl -X POST "http://127.0.0.1:8000/api/v1/auth/login" \
 
 ### RAG
 
-| 方法 | 路径 | 说明 |
+| メソッド | パス | 説明 |
 | --- | --- | --- |
-| `POST` | `/api/v1/rag/ask` | 基于当前登录角色执行检索问答 |
+| `POST` | `/api/v1/rag/ask` | 現在のユーザーロールに基づいて検索 QA を実行 |
 
-提问示例：
+質問例：
 
 ```bash
 curl -X POST "http://127.0.0.1:8000/api/v1/rag/ask" \
   -H "Authorization: Bearer <ACCESS_TOKEN>" \
   -H "Content-Type: application/json" \
-  -d "{\"question\":\"FN-007 的功能名是什么？\"}"
+  -d "{\"question\":\"FN-007 の機能名は何ですか？\"}"
 ```
 
-## 文档解析与导入
+## 文書解析と投入
 
-- `.xlsx` / `.xlsm`：优先使用 `JapaneseExcelParser`
-- `.xls` / `.xlsb`：使用 `MarkItDownFallback`
-- `.pdf`：优先使用 `PDFMarkdownParser`
-- 导入后的 metadata 包含 `source_file`、`source_key`、`allowed_roles`、`chunk_index`、`sheet_name`、`cell_range`、`content_type`
+- `.xlsx` / `.xlsm`：優先的に `JapaneseExcelParser` を使用
+- `.xls` / `.xlsb`：`MarkItDownFallback` を使用
+- `.pdf`：優先的に `PDFMarkdownParser` を使用
+- 投入後の metadata には `source_file`、`source_key`、`allowed_roles`、`chunk_index`、`sheet_name`、`cell_range`、`content_type` が含まれます
 
-## 目录结构
+## ディレクトリ構成
 
 ```text
 .
-├─ app/                 后端应用
-│  ├─ api/v1/           auth / docs / rag / health 接口
-│  ├─ core/             配置、鉴权、日志、错误处理
-│  ├─ db/               SQLAlchemy 模型与数据库连接
-│  ├─ clients/          Qdrant 客户端封装
-│  └─ services/         解析、导入、检索、RAG、rerank 等核心逻辑
-├─ frontend/            React 前端
-├─ script/              导入、评测、Qdrant 重置、rerank 启动脚本
-├─ docs/                设计文档、式样书与评测报告
-├─ tests/               单元测试与集成测试
-├─ alembic/             数据库迁移
+├─ app/                 バックエンドアプリケーション
+│  ├─ api/v1/           auth / docs / rag / health API
+│  ├─ core/             設定、認証、ログ、エラー処理
+│  ├─ db/               SQLAlchemy モデルと DB 接続
+│  ├─ clients/          Qdrant クライアント
+│  └─ services/         解析、投入、検索、RAG、rerank の主要ロジック
+├─ frontend/            React フロントエンド
+├─ script/              投入、評価、Qdrant reset、rerank 起動スクリプト
+├─ docs/                設計書、仕様書、評価レポート
+├─ tests/               単体テストと統合テスト
+├─ alembic/             DB migration
 ├─ docker-compose.yml   PostgreSQL / Qdrant / pgAdmin
-└─ .env.example         环境变量示例
+└─ .env.example         環境変数サンプル
 ```
 
-## 测试
+## テスト
 
-后端测试：
+バックエンド：
 
 ```powershell
 uv run pytest
 ```
 
-前端检查：
+フロントエンド：
 
 ```powershell
 npm --prefix frontend run lint
@@ -303,4 +303,4 @@ npm --prefix frontend run lint
 
 ## License
 
-本项目采用 [`Apache-2.0`](./LICENSE) 许可证。
+This project is licensed under [`Apache-2.0`](./LICENSE).
