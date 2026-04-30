@@ -16,8 +16,8 @@ A role-aware RAG platform for internal enterprise knowledge bases. It filters do
 </p>
 
 <p align="left">
-  <a href="./README.md">中文</a> |
-  <a href="./README.ja.md">日本語</a> |
+  <a href="./README.zh.md">中文</a> |
+  <a href="./README.md">日本語</a> |
   <strong>English</strong>
 </p>
 
