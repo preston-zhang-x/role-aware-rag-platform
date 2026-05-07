@@ -74,6 +74,18 @@ The custom parser keeps the structural hints people rely on when reading these d
   </tr>
 </table>
 
+### Try Excel to Markdown
+
+Put `excel_parser_md.py` and `run_excel_parser_singlefile.bat` in the folder that contains the Excel files, then double-click:
+
+Before running it, install Python and make sure `python` or `py` is available on `PATH`.
+
+```text
+run_excel_parser_singlefile.bat
+```
+
+The script converts `.xlsx` / `.xlsm` files in that folder and writes same-name `.md` files beside them. On the first run, it installs `openpyxl` if needed. Excel layouts vary by company, so conversion quality can vary; tune the parser rules around your own company's workbook structure for better results.
+
 ## Demo
 
 ![Demo](docs/动画演示.gif)
