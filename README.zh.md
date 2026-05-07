@@ -78,12 +78,12 @@ Role Aware RAG Platform 是一个面向企业内部知识库的 RAG 应用。它
 
 把 `excel_parser_md.py` 和 `run_excel_parser_singlefile.bat` 放到 Excel 文件夹里，双击运行：
 
-运行前请先安装 Python，并确保 `python` 或 `py` 命令已加入环境变量 `PATH`。
 
 ```text
 run_excel_parser_singlefile.bat
 ```
 
+运行前请先安装 Python，并确保 `python` 或 `py` 命令已加入环境变量 `PATH`。
 脚本会自动转换当前文件夹里的 `.xlsx` / `.xlsm`，并生成同名 `.md` 文件。第一次运行如果缺少 `openpyxl`，会自动安装。每家公司 Excel 模板和排版方式不同，转换效果也会不同；实际使用时建议根据自己公司的 Excel 结构继续调整 parser 规则。
 
 ## 动画演示
