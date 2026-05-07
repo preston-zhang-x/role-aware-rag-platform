@@ -74,6 +74,18 @@ Role Aware RAG Platform は、企業内文書を対象にした RAG アプリケ
   </tr>
 </table>
 
+### Excel から Markdown への簡単変換
+
+`excel_parser_md.py` と `run_excel_parser_singlefile.bat` を Excel ファイルのあるフォルダに置き、次をダブルクリックします。
+
+実行前に Python をインストールし、`python` または `py` コマンドを `PATH` から実行できるようにしてください。
+
+```text
+run_excel_parser_singlefile.bat
+```
+
+同じフォルダ内の `.xlsx` / `.xlsm` を自動で変換し、同名の `.md` ファイルを出力します。初回実行時に `openpyxl` がなければ自動でインストールします。Excel の構造は会社ごとに異なるため、変換結果も文書の作りによって変わります。実運用では、自社の Excel 構造に合わせて parser のルールを調整してください。
+
 ## デモ
 
 ![Demo](docs/动画演示.gif)
