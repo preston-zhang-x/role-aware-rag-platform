@@ -20,6 +20,7 @@ doc/
 .claude/
 .sisyphus/
 .tmp/
+docs/
 NUL
 
 # Frontend (Vite / React)
